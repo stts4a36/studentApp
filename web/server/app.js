@@ -9,7 +9,12 @@ import workRoutes from './routes/work.js'
 
 const app = express()
 app.use(cors())
-app.use(express.json())
+app.use((req, res, next) => {
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return next()
+  }
+  express.json()(req, res, next)
+})
 
 app.use((req, _res, next) => {
   if (process.env.VERCEL && !req.path.startsWith('/api')) {

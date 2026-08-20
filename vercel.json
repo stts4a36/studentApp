@@ -3,12 +3,13 @@
   "buildCommand": "npm --prefix web/client run build",
   "outputDirectory": "web/client/dist",
   "functions": {
-    "api/[[...path]].js": {
+    "api/index.js": {
       "maxDuration": 30,
       "includeFiles": "web/server/**"
     }
   },
   "rewrites": [
+    { "source": "/api/:path*", "destination": "/api?path=:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
