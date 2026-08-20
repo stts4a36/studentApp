@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import weekOfYear from 'dayjs/plugin/weekOfYear'
 import api from '../utils/api'
+import './MeetCalendar.css'
 
 dayjs.extend(weekOfYear)
 
@@ -94,11 +95,8 @@ function MeetCalendar() {
   )
 
   const pillStyle = (active) => ({
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-    padding: '8px 14px', borderRadius: 28, cursor: 'pointer', flexShrink: 0,
     background: active ? 'var(--accent)' : 'var(--bg-elevated)',
     border: active ? '2px solid var(--accent)' : '2px solid var(--border)',
-    transition: 'all 0.2s',
   })
 
   const pillText = (active) => ({
@@ -132,15 +130,15 @@ function MeetCalendar() {
       {/* Teacher carousel filter */}
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>教師</div>
-        <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
-          <div style={pillStyle(!teacherFilter)} onClick={() => { setTeacherFilter(''); setCourseFilter('') }}>
+        <div className="h-scroll">
+          <div className="teacher-pill" style={pillStyle(!teacherFilter)} onClick={() => { setTeacherFilter(''); setCourseFilter('') }}>
             <AvatarIcon size={36} color={!teacherFilter ? '#fff' : 'var(--accent)'} bg={!teacherFilter ? 'rgba(255,255,255,0.2)' : 'var(--accent-soft)'} />
             <span style={pillText(!teacherFilter)}>全部</span>
           </div>
           {teachers.map(t => {
             const disabled = courseFilter && meetMap[courseFilter]?.MEET_TEACHER !== t
             return (
-              <div key={t} style={{ ...pillStyle(teacherFilter === t), opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? 'none' : 'auto' }} onClick={() => { setTeacherFilter(teacherFilter === t ? '' : t); setCourseFilter('') }}>
+              <div key={t} className="teacher-pill" style={{ ...pillStyle(teacherFilter === t), opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? 'none' : 'auto' }} onClick={() => { setTeacherFilter(teacherFilter === t ? '' : t); setCourseFilter('') }}>
                 <AvatarIcon size={36} color={teacherFilter === t ? '#fff' : 'var(--accent)'} bg={teacherFilter === t ? 'rgba(255,255,255,0.2)' : 'var(--accent-soft)'} />
                 <span style={pillText(teacherFilter === t)}>{t}</span>
               </div>
@@ -152,13 +150,12 @@ function MeetCalendar() {
       {/* Course carousel filter */}
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>課程</div>
-        <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8 }}>
+        <div className="h-scroll">
           {/* All card */}
-          <div style={{
-            flexShrink: 0, width: 160, borderRadius: 12, cursor: 'pointer', overflow: 'hidden',
+          <div className="course-card" style={{
             border: !courseFilter ? '2px solid var(--accent)' : '2px solid var(--border)',
-            background: 'var(--bg-card)', transition: 'all 0.2s',
             boxShadow: !courseFilter ? 'var(--shadow-glow)' : 'none',
+            cursor: 'pointer',
           }} onClick={() => { setCourseFilter(''); setTeacherFilter('') }}>
             <div style={{ height: 60, background: 'linear-gradient(135deg, var(--accent-soft) 0%, var(--bg-elevated) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)', opacity: 0.6 }}>ALL</span>
@@ -173,10 +170,9 @@ function MeetCalendar() {
             const active = courseFilter === c.MEET_ID
             const disabled = teacherFilter && c.MEET_TEACHER !== teacherFilter
             return (
-              <div key={c.MEET_ID} style={{
-                flexShrink: 0, width: 180, borderRadius: 12, cursor: disabled ? 'default' : 'pointer', overflow: 'hidden',
+              <div key={c.MEET_ID} className="course-card" style={{
                 border: active ? `2px solid ${color.border}` : '2px solid var(--border)',
-                background: 'var(--bg-card)', transition: 'all 0.2s',
+                cursor: disabled ? 'default' : 'pointer',
                 opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? 'none' : 'auto',
                 boxShadow: active ? `0 0 14px ${color.bg}` : 'none',
               }} onClick={() => { setCourseFilter(active ? '' : c.MEET_ID); setTeacherFilter(active ? '' : (c.MEET_TEACHER || '')) }}>
@@ -201,11 +197,10 @@ function MeetCalendar() {
         </div>
       </div>
 
-      {/* Timetable + sidebar */}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="cal-layout">
+        <div className="cal-week">
           {/* Week nav */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
             <button className="btn-primary-sm" onClick={goToday}>Today</button>
             <button className="btn-link" onClick={() => setCurrentWeek(currentWeek.subtract(7, 'day'))}>&lt;</button>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Week {currentWeek.week()}</span>
@@ -213,8 +208,8 @@ function MeetCalendar() {
           </div>
 
           {/* Grid */}
-          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-card)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, 1fr)', minWidth: 700 }}>
+          <div className="cal-grid-wrap">
+            <div className="cal-grid">
               <div style={{ padding: '10px 4px', textAlign: 'center', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)' }}></div>
               {weekColumns.map((d, i) => {
                 const isToday = d.isSame(dayjs(), 'day')
@@ -293,8 +288,7 @@ function MeetCalendar() {
           </div>
         </div>
 
-        {/* Mini calendar sidebar */}
-        <div style={{ width: 220, flexShrink: 0 }}>
+        <div className="cal-mini">
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <button className="btn-link" style={{ fontSize: 12 }} onClick={() => setMiniMonth(miniMonth.subtract(1, 'month'))}>&lt;</button>

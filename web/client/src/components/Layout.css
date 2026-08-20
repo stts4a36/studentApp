@@ -129,13 +129,29 @@
   margin: 0 auto;
   padding: 24px 20px;
   width: 100%;
+  min-width: 0;
 }
 
 @media (max-width: 768px) {
-  .header-inner { padding: 0 14px; }
-  .nav { gap: 16px; }
-  .nav a { font-size: 13px; }
-  .logo { font-size: 16px; }
+  .header-inner {
+    height: auto;
+    min-height: 52px;
+    padding: 10px 12px 8px;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+  }
+  .logo { font-size: 15px; }
+  .nav {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: space-around;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  .nav a { font-size: 13px; padding: 4px 0; }
+  .user-area { margin-left: auto; gap: 8px; }
+  .btn-primary-sm { padding: 6px 12px; font-size: 12px; }
+  .main-content { padding: 12px 12px 28px; }
 }
 
 .layout-sidebar {

@@ -1,0 +1,88 @@
+.h-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.h-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cal-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.cal-week {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.cal-mini {
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.cal-grid-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  scrollbar-width: thin;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(86px, 1fr));
+  min-width: 658px;
+}
+
+.course-card {
+  flex-shrink: 0;
+  width: 180px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-card);
+  transition: all 0.2s;
+}
+
+.teacher-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+@media (max-width: 860px) {
+  .cal-layout {
+    flex-direction: column;
+  }
+  .cal-mini {
+    width: 100%;
+    max-width: 360px;
+    order: -1;
+  }
+  .cal-grid {
+    grid-template-columns: 44px repeat(7, minmax(64px, 1fr));
+    min-width: 492px;
+  }
+}
+
+@media (max-width: 768px) {
+  .course-card {
+    width: 140px;
+  }
+  .teacher-pill {
+    padding: 6px 10px;
+  }
+}

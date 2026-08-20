@@ -39,7 +39,16 @@ function Login() {
         radial-gradient(ellipse at 30% 20%, rgba(123, 104, 238, 0.08) 0%, transparent 50%),
         radial-gradient(ellipse at 70% 80%, rgba(46, 204, 113, 0.06) 0%, transparent 50%)
       `,
+      position: 'relative',
     }}>
+      <button
+        type="button"
+        className="page-header-back"
+        onClick={() => navigate('/')}
+        style={{ position: 'absolute', top: 20, left: 20 }}
+      >
+        ← 返回
+      </button>
       <div className="card" style={{
         width: 380,
         padding: '40px 32px',

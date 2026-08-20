@@ -72,6 +72,7 @@ body {
   margin: 0 auto;
   padding: 8px 4px 28px;
   animation: fadeIn 0.4s ease;
+  min-width: 0;
 }
 
 .card {
@@ -238,7 +239,7 @@ button {
 
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 14px;
 }
 
@@ -305,4 +306,17 @@ button {
   font-weight: 700;
   letter-spacing: -0.02em;
   flex: 1;
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    padding: 4px 0 24px;
+  }
+  .content-title {
+    font-size: 18px;
+  }
+  .content-title-row {
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+  }
 }
