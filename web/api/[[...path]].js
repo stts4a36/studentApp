@@ -1,5 +1,21 @@
+'use strict'
+
+const { pathToFileURL } = require('url')
+const { join } = require('path')
+
+const importEsm = new Function('u', 'return import(u)')
+
+let appPromise
+function loadApp() {
+  if (!appPromise) {
+    const file = join(__dirname, '..', 'server', 'app.js')
+    appPromise = importEsm(pathToFileURL(file).href).then((mod) => mod.default)
+  }
+  return appPromise
+}
+
 module.exports = async function handler(req, res) {
-  const { default: app } = await import('../server/app.js')
+  const app = await loadApp()
   return app(req, res)
 }
 

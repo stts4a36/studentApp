@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm --prefix web/client install && npm --prefix web/server install",
+  "installCommand": "npm install && npm --prefix web/client install && npm --prefix web/server install",
   "buildCommand": "npm --prefix web/client run build",
   "outputDirectory": "web/client/dist",
   "functions": {
