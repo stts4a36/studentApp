@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 import db from '../db.js'
 import { signWorkToken, authWork } from '../middleware.js'
-import { applySlotTimeChange } from '../slotTime.js'
+import { applySlotTimeChange, findDayRowsOnDate } from '../slotTime.js'
 
 const router = Router()
 
@@ -104,8 +104,8 @@ router.post('/meet/:id/days', authWork, async (req, res) => {
   }
 
   // Check time conflicts with existing slots on the same day
-  const existingDay = await db.prepare('SELECT * FROM days WHERE DAY_MEET_ID = ? AND day = ?').get(req.params.id, day)
-  const existingTimes = existingDay ? parseJSON(existingDay.times) : []
+  const existingRows = await findDayRowsOnDate(db, req.params.id, day)
+  const existingTimes = existingRows.flatMap((row) => parseJSON(row.times))
   for (const newT of (times || [])) {
     for (const oldT of existingTimes) {
       if (newT.start < oldT.end && newT.end > oldT.start) {
@@ -117,9 +117,10 @@ router.post('/meet/:id/days', authWork, async (req, res) => {
   const now = Date.now()
   const timesWithMark = (times || []).map(t => ({ ...t, mark: uuidv4().slice(0, 8), status: 1, isLimit: true, stat: { succCnt: 0, cancelCnt: 0, adminCancelCnt: 0 } }))
 
+  const existingDay = existingRows[0]
   if (existingDay) {
     // Merge into existing row
-    const merged = [...existingTimes, ...timesWithMark]
+    const merged = [...parseJSON(existingDay.times), ...timesWithMark]
     await db.prepare('UPDATE days SET times = ?, DAY_EDIT_TIME = ? WHERE DAY_ID = ?')
       .run(JSON.stringify(merged), now, existingDay.DAY_ID)
     res.json({ data: { DAY_ID: existingDay.DAY_ID } })

@@ -12,7 +12,10 @@ function MeetList() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">課程預約</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">課程預約</h1>
+      </div>
       <div className="grid-cards">
         {list.map((item, i) => (
           <div

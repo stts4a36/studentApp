@@ -19,8 +19,9 @@ function AdminMeetList() {
 
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 className="section-title">預約管理</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">預約管理</h1>
         <button className="btn-primary-sm" onClick={() => navigate('/admin/meet/add')}>新增預約</button>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -46,9 +47,9 @@ function AdminMeetList() {
                   </span>
                 </td>
                 <td style={{ padding: 12, textAlign: 'center' }}>
-                  <button className="btn-link" onClick={() => navigate(`/admin/meet/${item.MEET_ID}/edit`)}>編輯</button>
-                  <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => navigate(`/admin/meet/${item.MEET_ID}/time`)}>時段</button>
-                  <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => navigate(`/admin/meet/${item.MEET_ID}/joins`)}>名單</button>
+                  <button className="btn-link" onClick={() => navigate(`/admin/meet/${item.MEET_ID}/edit`, { state: { title: item.MEET_TITLE } })}>編輯</button>
+                  <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => navigate(`/admin/meet/${item.MEET_ID}/time`, { state: { title: item.MEET_TITLE } })}>時段</button>
+                  <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => navigate(`/admin/meet/${item.MEET_ID}/joins`, { state: { title: item.MEET_TITLE } })}>名單</button>
                   <button className="btn-link" style={{ color: 'var(--danger)', marginLeft: 6 }} onClick={() => handleDelete(item.MEET_ID)}>刪除</button>
                 </td>
               </tr>

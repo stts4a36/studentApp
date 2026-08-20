@@ -34,8 +34,9 @@ function AdminUserList() {
 
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 className="section-title">用戶管理</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">用戶管理</h1>
         <button className="btn-primary-sm" onClick={() => setShowAdd(!showAdd)}>{showAdd ? '收起' : '新增用戶'}</button>
       </div>
 

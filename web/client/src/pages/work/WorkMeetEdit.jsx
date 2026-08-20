@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
 
 function WorkMeetEdit() {
+  const navigate = useNavigate()
   const [meet, setMeet] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const meetId = localStorage.getItem('workMeetId')
+  const meetTitle = meet?.MEET_TITLE || localStorage.getItem('workMeetTitle') || ''
 
   useEffect(() => {
     if (!meetId) return
     api.get(`/work/meet/${meetId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('workToken')}` } })
-      .then(res => setMeet(res.data))
+      .then(res => {
+        const data = res.data || res
+        setMeet(data)
+        if (data?.MEET_TITLE) localStorage.setItem('workMeetTitle', data.MEET_TITLE)
+      })
   }, [])
 
   const handleSave = async () => {
@@ -27,11 +35,18 @@ function WorkMeetEdit() {
 
   if (!meetId) return <div className="page-container">請先在首頁選擇課程</div>
 
-  if (!meet) return <div className="page-container">載入中...</div>
+  if (!meet) {
+    return (
+      <div className="page-container">
+        <PageHeader title="預約設定" subtitle={meetTitle} onBack={() => navigate('/work')} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
-      <h2 style={{ fontSize: 18, marginBottom: 16 }}>預約設定</h2>
+      <PageHeader title="預約設定" subtitle={meetTitle} onBack={() => navigate('/work')} />
       <div className="card" style={{ maxWidth: 500 }}>
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', marginBottom: 4 }}>課程標題</label>

@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
 
 function AdminMeetEdit() {
   const { id } = useParams()
+  const location = useLocation()
   const [form, setForm] = useState(null)
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const meetTitle = form?.MEET_TITLE || location.state?.title || ''
 
   useEffect(() => {
     api.get(`/admin/meet/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-      .then(res => setForm(res.data))
+      .then(res => setForm(res.data?.MEET_ID ? res.data : (res.MEET_ID ? res : res.data)))
     api.get('/admin/teachers', { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
       .then(res => setTeachers(res.data || []))
   }, [id])
@@ -26,11 +29,18 @@ function AdminMeetEdit() {
     finally { setLoading(false) }
   }
 
-  if (!form) return <div className="page-container"><p className="empty-state">載入中...</p></div>
+  if (!form) {
+    return (
+      <div className="page-container">
+        <PageHeader title="編輯預約項目" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
-      <h2 className="section-title">編輯預約項目</h2>
+      <PageHeader title="編輯預約項目" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
       <div className="card card-animate" style={{ maxWidth: 500 }}>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>

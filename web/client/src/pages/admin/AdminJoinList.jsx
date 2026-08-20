@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
+import { pickMeetTitle } from '../../utils/meet'
 
 function AdminJoinList() {
   const { id } = useParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [list, setList] = useState([])
+  const [meetTitle, setMeetTitle] = useState(location.state?.title || '')
+  const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
 
   useEffect(() => {
-    api.get(`/admin/meet/${id}/joins`, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-      .then(res => setList(res.data || []))
+    api.get(`/admin/meet/${id}/joins`, { headers }).then(res => setList(res.data || []))
+    api.get(`/admin/meet/${id}`, { headers }).then(res => setMeetTitle(pickMeetTitle(res, location.state?.title || '')))
   }, [id])
 
   const handleCancel = async (joinId) => {
@@ -24,7 +30,7 @@ function AdminJoinList() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">預約名單</h2>
+      <PageHeader title="預約名單" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
           <thead>

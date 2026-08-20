@@ -27,6 +27,10 @@ function MyIndex() {
   if (user.USER_TYPE === 2) {
     return (
       <div className="page-container">
+        <div className="content-title-row">
+          <span className="content-title-icon" />
+          <h1 className="content-title">我的帳號</h1>
+        </div>
         <div className="card card-animate">
           <h2 style={{ fontSize: 20, marginBottom: 10 }}>{user.USER_NAME || '教師'}</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>手機：{user.USER_MOBILE}</p>
@@ -88,6 +92,10 @@ function MyIndex() {
 
   return (
     <div className="page-container">
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">我的帳號</h1>
+      </div>
       <div className="card card-animate">
         <h2 style={{ fontSize: 20, marginBottom: 10 }}>{user.USER_NAME || '用戶'}</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>手機：{user.USER_MOBILE || '未設定'}</p>

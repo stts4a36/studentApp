@@ -12,7 +12,10 @@ function NewsList() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">最新通知</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">最新通知</h1>
+      </div>
       {list.map((item, i) => (
         <div key={item.NEWS_ID} className="card card-animate" style={{ cursor: 'pointer', animationDelay: `${i * 0.06}s` }} onClick={() => navigate(`/news/${item.NEWS_ID}`)}>
           <h3 style={{ fontSize: 15, marginBottom: 4 }}>{item.NEWS_TITLE}</h3>

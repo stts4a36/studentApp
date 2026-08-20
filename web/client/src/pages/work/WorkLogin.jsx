@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '../../utils/api'
+import { LogoMark } from '../../components/icons'
 
 function WorkLogin() {
   const [form, setForm] = useState({ phone: '', password: '' })
@@ -36,6 +37,9 @@ function WorkLogin() {
         animation: 'fadeInUp 0.5s ease',
         border: '1px solid var(--border-accent)',
       }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <LogoMark size={36} />
+        </div>
         <h2 style={{ textAlign: 'center', marginBottom: 8, fontFamily: 'var(--font-display)', fontSize: 24 }}>教師登入</h2>
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginBottom: 28 }}>教師工作台</p>
         <form onSubmit={handleSubmit}>

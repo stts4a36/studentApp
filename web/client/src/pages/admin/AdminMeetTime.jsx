@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
 import SlotTimeModal from '../../components/SlotTimeModal'
+import { groupDaysByDate } from '../../utils/days'
+import { pickMeetTitle } from '../../utils/meet'
 
 function AdminMeetTime() {
   const { id } = useParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
+  const [meetTitle, setMeetTitle] = useState(location.state?.title || '')
   const [days, setDays] = useState([])
   const [newDay, setNewDay] = useState('')
   const [newTimes, setNewTimes] = useState([{ start: '09:00', end: '10:00', limit: 5 }])
@@ -15,7 +21,10 @@ function AdminMeetTime() {
   const [slotJoinsInfo, setSlotJoinsInfo] = useState(null)
   const [editingTime, setEditingTime] = useState(null)
 
-  useEffect(() => { loadDays() }, [id])
+  useEffect(() => {
+    loadDays()
+    api.get(`/admin/meet/${id}`, { headers }).then(res => setMeetTitle(pickMeetTitle(res, location.state?.title || '')))
+  }, [id])
 
   const loadDays = () => {
     api.get(`/admin/meet/${id}/days`, { headers }).then(res => setDays(res.data || []))
@@ -104,7 +113,7 @@ function AdminMeetTime() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">時段管理</h2>
+      <PageHeader title="時段管理" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
 
       {editingTime && (
         <SlotTimeModal
@@ -184,12 +193,7 @@ function AdminMeetTime() {
       {/* Day list */}
       <h3 className="section-title">已設定日期</h3>
       {(() => {
-        const grouped = days.reduce((acc, d) => {
-          if (!acc[d.day]) acc[d.day] = { day: d.day, entries: [] }
-          acc[d.day].entries.push(d)
-          return acc
-        }, {})
-        const sortedDays = Object.values(grouped).sort((a, b) => a.day.localeCompare(b.day))
+        const sortedDays = groupDaysByDate(days)
         return sortedDays.map(group => (
           <div key={group.day} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -199,7 +203,7 @@ function AdminMeetTime() {
               }}>刪除整天</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {group.entries.flatMap(d => (d.times || []).map(t => (
+              {group.slots.map(t => (
                 <div key={t.mark} style={{
                   background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 'var(--radius-sm)',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -214,7 +218,7 @@ function AdminMeetTime() {
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button className="btn-link" style={{ fontSize: 12, color: 'var(--accent)' }}
                       onClick={() => setEditingTime({
-                        dayId: d.DAY_ID, mark: t.mark, day: group.day,
+                        dayId: t.dayId, mark: t.mark, day: group.day,
                         start: t.start, end: t.end, enrolled: t.stat?.succCnt || 0,
                       })}>
                       更改時間
@@ -224,14 +228,14 @@ function AdminMeetTime() {
                       查看名單
                     </button>
                     <button className="btn-link" style={{ fontSize: 12 }}
-                      onClick={() => handleEditLimit(d.DAY_ID, t.mark, t.limit)}>
+                      onClick={() => handleEditLimit(t.dayId, t.mark, t.limit)}>
                       修改上限
                     </button>
-                    <button onClick={() => handleDeleteSlot(d.DAY_ID, t.mark)}
+                    <button onClick={() => handleDeleteSlot(t.dayId, t.mark)}
                       style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, padding: 0 }}>×</button>
                   </div>
                 </div>
-              )))}
+              ))}
             </div>
           </div>
         ))

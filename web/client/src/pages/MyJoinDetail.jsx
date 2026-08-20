@@ -127,7 +127,7 @@ function MyJoinDetail() {
             style={{
               width: '100%', padding: 12,
               background: 'var(--danger-soft)', color: 'var(--danger)',
-              border: '1px solid rgba(248, 81, 73, 0.3)',
+              border: '1px solid rgba(231, 76, 60, 0.28)',
               borderRadius: 'var(--radius-sm)', cursor: join.canChange ? 'pointer' : 'not-allowed',
               fontWeight: 600, fontSize: 15, opacity: join.canChange ? 1 : 0.5,
             }}

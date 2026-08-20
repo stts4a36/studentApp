@@ -19,8 +19,9 @@ function AdminNewsList() {
 
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 className="section-title">公告管理</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">公告管理</h1>
         <button className="btn-primary-sm" onClick={() => navigate('/admin/news/add')}>新增公告</button>
       </div>
       <div style={{ overflowX: 'auto' }}>

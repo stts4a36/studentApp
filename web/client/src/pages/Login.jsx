@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '../utils/api'
 import { setAuth } from '../utils/auth'
+import { LogoMark } from '../components/icons'
 
 function Login() {
   const [mobile, setMobile] = useState('')
@@ -35,8 +36,8 @@ function Login() {
       justifyContent: 'center',
       background: 'var(--bg-deep)',
       backgroundImage: `
-        radial-gradient(ellipse at 30% 20%, rgba(230, 57, 70, 0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 70% 80%, rgba(212, 160, 60, 0.04) 0%, transparent 50%)
+        radial-gradient(ellipse at 30% 20%, rgba(123, 104, 238, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(46, 204, 113, 0.06) 0%, transparent 50%)
       `,
     }}>
       <div className="card" style={{
@@ -46,6 +47,9 @@ function Login() {
         border: '1px solid var(--border-accent)',
         boxShadow: 'var(--shadow-glow)',
       }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <LogoMark size={36} />
+        </div>
         <h2 style={{
           textAlign: 'center',
           marginBottom: 8,

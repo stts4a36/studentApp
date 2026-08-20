@@ -1,13 +1,24 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
+import { pickMeetTitle } from '../../utils/meet'
 
 function WorkJoinList() {
+  const navigate = useNavigate()
   const [list, setList] = useState([])
+  const [meetTitle, setMeetTitle] = useState(localStorage.getItem('workMeetTitle') || '')
   const meetId = localStorage.getItem('workMeetId')
   const headers = { Authorization: `Bearer ${localStorage.getItem('workToken')}` }
 
   useEffect(() => {
-    if (meetId) api.get(`/work/meet/${meetId}/joins`, { headers }).then(res => setList(res.data || []))
+    if (!meetId) return
+    api.get(`/work/meet/${meetId}/joins`, { headers }).then(res => setList(res.data || []))
+    api.get(`/work/meet/${meetId}`, { headers }).then(res => {
+      const title = pickMeetTitle(res, localStorage.getItem('workMeetTitle') || '')
+      setMeetTitle(title)
+      if (title) localStorage.setItem('workMeetTitle', title)
+    })
   }, [])
 
   const handleCheckin = async (joinId) => {
@@ -25,7 +36,7 @@ function WorkJoinList() {
 
   return (
     <div className="page-container">
-      <h2 style={{ fontSize: 18, marginBottom: 16 }}>預約名單</h2>
+      <PageHeader title="預約名單" subtitle={meetTitle} onBack={() => navigate('/work')} />
       <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
@@ -49,7 +60,7 @@ function WorkJoinList() {
                 {item.JOIN_STATUS === 1 && !item.JOIN_IS_CHECKIN && (
                   <>
                     <button className="btn-link" onClick={() => handleCheckin(item.JOIN_ID)}>核銷</button>
-                    <button className="btn-link" style={{ color: '#ff4d4f' }} onClick={() => handleCancel(item.JOIN_ID)}>取消</button>
+                    <button className="btn-link" style={{ color: 'var(--danger)' }} onClick={() => handleCancel(item.JOIN_ID)}>取消</button>
                   </>
                 )}
               </td>
@@ -57,7 +68,7 @@ function WorkJoinList() {
           ))}
         </tbody>
       </table>
-      {list.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: 20 }}>暫無資料</p>}
+      {list.length === 0 && <p className="empty-state">暫無資料</p>}
     </div>
   )
 }

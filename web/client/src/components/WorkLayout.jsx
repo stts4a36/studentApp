@@ -1,4 +1,6 @@
 import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
+import { LogoMark, IconHome } from './icons'
+import './Layout.css'
 
 function WorkLayout() {
   const navigate = useNavigate()
@@ -11,19 +13,34 @@ function WorkLayout() {
     localStorage.removeItem('workToken')
     localStorage.removeItem('work')
     localStorage.removeItem('workMeetId')
+    localStorage.removeItem('workMeetTitle')
     navigate('/work/login')
   }
 
   return (
-    <div className="layout">
+    <div className="layout layout-sidebar">
       <header className="header">
         <div className="header-inner">
-          <h1 className="logo" onClick={() => navigate('/work')}>教師端</h1>
+          <div className="sidebar-brand" onClick={() => navigate('/work')}>
+            <LogoMark />
+            <h1 className="logo">教師端</h1>
+          </div>
           <nav className="nav">
-            <NavLink to="/work" end>首頁</NavLink>
-            <NavLink to="/work/meet/edit">預約設定</NavLink>
-            <NavLink to="/work/meet/time">時段管理</NavLink>
-            <NavLink to="/work/meet/joins">預約名單</NavLink>
+            <div className="nav-section-label">選單</div>
+            <NavLink to="/work" end><IconHome />首頁</NavLink>
+            <div className="nav-section-label">工作區</div>
+            <NavLink to="/work/meet/edit">
+              <span className="space-swatch" style={{ background: '#7b68ee' }} />
+              預約設定
+            </NavLink>
+            <NavLink to="/work/meet/time">
+              <span className="space-swatch" style={{ background: '#2ecc71' }} />
+              時段管理
+            </NavLink>
+            <NavLink to="/work/meet/joins">
+              <span className="space-swatch" style={{ background: '#3498db' }} />
+              預約名單
+            </NavLink>
           </nav>
           <div className="user-area">
             <span className="username">{work?.USER_NAME || '教師'}</span>

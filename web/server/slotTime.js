@@ -146,3 +146,15 @@ export async function applySlotTimeChange(db, { meetId, dayId, mark, newDay, sta
 }
 
 export { HOURS_24 }
+
+export function dateKey(value) {
+  const s = String(value || '')
+  const m = s.match(/\d{4}-\d{2}-\d{2}/)
+  return m ? m[0] : s.slice(0, 10)
+}
+
+export async function findDayRowsOnDate(db, meetId, day) {
+  const key = dateKey(day)
+  const rows = await db.prepare('SELECT * FROM days WHERE DAY_MEET_ID = ?').all(meetId)
+  return rows.filter((r) => dateKey(r.day) === key)
+}

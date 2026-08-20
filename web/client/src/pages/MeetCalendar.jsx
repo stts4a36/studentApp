@@ -63,12 +63,12 @@ function MeetCalendar() {
   }
 
   const palette = [
-    { bg: 'rgba(99,179,237,0.18)', border: '#63b3ed', text: '#63b3ed' },
-    { bg: 'rgba(129,230,217,0.18)', border: '#81e6d9', text: '#38b2ac' },
-    { bg: 'rgba(246,173,85,0.18)', border: '#f6ad55', text: '#dd6b20' },
-    { bg: 'rgba(183,148,244,0.18)', border: '#b794f4', text: '#805ad5' },
-    { bg: 'rgba(252,129,129,0.18)', border: '#fc8181', text: '#e53e3e' },
-    { bg: 'rgba(144,205,244,0.18)', border: '#90cdf4', text: '#2b6cb0' },
+    { bg: 'rgba(123,104,238,0.12)', border: '#7B68EE', text: '#5B4CDB' },
+    { bg: 'rgba(46,204,113,0.14)', border: '#2ECC71', text: '#1EA557' },
+    { bg: 'rgba(243,156,18,0.14)', border: '#F39C12', text: '#D68910' },
+    { bg: 'rgba(52,152,219,0.12)', border: '#3498DB', text: '#2471A3' },
+    { bg: 'rgba(231,76,60,0.12)', border: '#E74C3C', text: '#C0392B' },
+    { bg: 'rgba(26,188,156,0.12)', border: '#1ABC9C', text: '#148F77' },
   ]
 
   const getMeetColor = (meetId) => {
@@ -124,7 +124,10 @@ function MeetCalendar() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">課程廣場</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">課程廣場</h1>
+      </div>
 
       {/* Teacher carousel filter */}
       <div style={{ marginBottom: 14 }}>
@@ -155,7 +158,7 @@ function MeetCalendar() {
             flexShrink: 0, width: 160, borderRadius: 12, cursor: 'pointer', overflow: 'hidden',
             border: !courseFilter ? '2px solid var(--accent)' : '2px solid var(--border)',
             background: 'var(--bg-card)', transition: 'all 0.2s',
-            boxShadow: !courseFilter ? '0 0 12px rgba(230,57,70,0.2)' : 'none',
+            boxShadow: !courseFilter ? 'var(--shadow-glow)' : 'none',
           }} onClick={() => { setCourseFilter(''); setTeacherFilter('') }}>
             <div style={{ height: 60, background: 'linear-gradient(135deg, var(--accent-soft) 0%, var(--bg-elevated) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)', opacity: 0.6 }}>ALL</span>

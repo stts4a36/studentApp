@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import SlotTimeModal from '../components/SlotTimeModal'
+import { groupDaysByDate } from '../utils/days'
 
 function MyCourse() {
   const navigate = useNavigate()
@@ -220,12 +221,7 @@ function MyCourse() {
 
           <h3 className="section-title">已設定日期</h3>
           {(() => {
-            const grouped = days.reduce((acc, d) => {
-              if (!acc[d.day]) acc[d.day] = { day: d.day, entries: [] }
-              acc[d.day].entries.push(d)
-              return acc
-            }, {})
-            const sortedDays = Object.values(grouped).sort((a, b) => a.day.localeCompare(b.day))
+            const sortedDays = groupDaysByDate(days)
             return sortedDays.map(group => (
               <div key={group.day} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -236,7 +232,7 @@ function MyCourse() {
                   }}>刪除整天</button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {group.entries.flatMap(d => (d.times || []).map(t => (
+                  {group.slots.map(t => (
                     <div key={t.mark} style={{
                       background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 'var(--radius-sm)',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -251,7 +247,7 @@ function MyCourse() {
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <button className="btn-link" style={{ fontSize: 12, color: 'var(--accent)' }}
                           onClick={() => setEditingTime({
-                            dayId: d.DAY_ID,
+                            dayId: t.dayId,
                             mark: t.mark,
                             day: group.day,
                             start: t.start,
@@ -265,14 +261,14 @@ function MyCourse() {
                           查看名單
                         </button>
                         <button className="btn-link" style={{ fontSize: 12 }}
-                          onClick={() => handleEditLimit(d.DAY_ID, t.mark, t.limit)}>
+                          onClick={() => handleEditLimit(t.dayId, t.mark, t.limit)}>
                           修改上限
                         </button>
-                        <button onClick={() => handleDeleteSlot(d.DAY_ID, t.mark)}
+                        <button onClick={() => handleDeleteSlot(t.dayId, t.mark)}
                           style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, padding: 0 }}>×</button>
                       </div>
                     </div>
-                  )))}
+                  ))}
                 </div>
               </div>
             ))

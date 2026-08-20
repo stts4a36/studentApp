@@ -11,7 +11,11 @@ function AdminHome() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">後台總覽</h2>
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">後台總覽</h1>
+      </div>
+      <h2 className="section-title">數據</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
         <div className="card card-animate" style={{ textAlign: 'center', animationDelay: '0s' }}>
           <div className="stat-number" style={{ color: 'var(--accent)' }}>{stats.userCount || 0}</div>

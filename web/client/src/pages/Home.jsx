@@ -14,6 +14,10 @@ function Home() {
 
   return (
     <div className="page-container">
+      <div className="content-title-row">
+        <span className="content-title-icon" />
+        <h1 className="content-title">課程總覽</h1>
+      </div>
       <section style={{ marginBottom: 36 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <h2 className="section-title">課程預約</h2>

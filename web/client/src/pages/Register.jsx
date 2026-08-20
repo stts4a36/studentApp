@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import api from '../utils/api'
 import { setAuth } from '../utils/auth'
 import AcademicFields from '../components/AcademicFields'
+import { LogoMark } from '../components/icons'
 
 function Register() {
   const [form, setForm] = useState({ name: '', mobile: '', password: '' })
@@ -32,8 +33,8 @@ function Register() {
       justifyContent: 'center',
       background: 'var(--bg-deep)',
       backgroundImage: `
-        radial-gradient(ellipse at 60% 10%, rgba(212, 160, 60, 0.05) 0%, transparent 50%),
-        radial-gradient(ellipse at 30% 90%, rgba(230, 57, 70, 0.04) 0%, transparent 50%)
+        radial-gradient(ellipse at 60% 10%, rgba(123, 104, 238, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 30% 90%, rgba(46, 204, 113, 0.05) 0%, transparent 50%)
       `,
     }}>
       <div className="card" style={{
@@ -43,6 +44,9 @@ function Register() {
         border: '1px solid var(--border-accent)',
         boxShadow: 'var(--shadow-glow)',
       }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <LogoMark size={36} />
+        </div>
         <h2 style={{
           textAlign: 'center',
           marginBottom: 8,
