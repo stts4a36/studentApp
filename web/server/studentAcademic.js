@@ -34,9 +34,9 @@ export function resolveAcademic({ enrollYear, enrollGrade, currentGrade }) {
   }
 }
 
-export function persistAcademic(db, userId, fields) {
+export async function persistAcademic(db, userId, fields) {
   const resolved = resolveAcademic(fields)
-  db.prepare(`
+  await db.prepare(`
     UPDATE users SET
       USER_ENROLL_YEAR = ?,
       USER_ENROLL_GRADE = ?,
@@ -48,11 +48,11 @@ export function persistAcademic(db, userId, fields) {
   return resolved
 }
 
-export function refreshAcademic(db, user) {
+export async function refreshAcademic(db, user) {
   if (!user || user.USER_TYPE === 2) return user
   if (user.USER_CURRENT_GRADE === '退學') {
     if (user.USER_SCHOOL_STATUS !== '已退學') {
-      persistAcademic(db, user.USER_ID, {
+      await persistAcademic(db, user.USER_ID, {
         enrollYear: user.USER_ENROLL_YEAR,
         enrollGrade: user.USER_ENROLL_GRADE,
         currentGrade: '退學',
@@ -73,7 +73,7 @@ export function refreshAcademic(db, user) {
 
   const status = schoolStatus(current)
   if (current !== stored || status !== (user.USER_SCHOOL_STATUS || '')) {
-    persistAcademic(db, user.USER_ID, {
+    await persistAcademic(db, user.USER_ID, {
       enrollYear: user.USER_ENROLL_YEAR,
       enrollGrade: user.USER_ENROLL_GRADE,
       currentGrade: current,

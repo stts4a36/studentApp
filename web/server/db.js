@@ -1,17 +1,56 @@
-import Database from 'better-sqlite3'
-import { fileURLToPath } from 'url'
+import { createClient } from '@libsql/client'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
 import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const db = new Database(join(__dirname, 'data.db'))
-db.pragma('journal_mode = WAL')
+function createDbClient() {
+  const url = process.env.TURSO_DATABASE_URL
+  if (url) {
+    return createClient({
+      url,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+      intMode: 'number',
+    })
+  }
+  if (process.env.VERCEL) {
+    throw new Error('Vercel 部署必須設定 TURSO_DATABASE_URL 與 TURSO_AUTH_TOKEN')
+  }
+  return createClient({
+    url: pathToFileURL(join(__dirname, 'data.db')).href,
+    intMode: 'number',
+  })
+}
 
-export function initDB() {
-  db.exec(`
+const client = createDbClient()
+
+function asArgs(args) {
+  return args.length === 1 && Array.isArray(args[0]) ? args[0] : args
+}
+
+function prepare(sql) {
+  return {
+    get: async (...args) => {
+      const result = await client.execute({ sql, args: asArgs(args) })
+      return result.rows[0]
+    },
+    all: async (...args) => {
+      const result = await client.execute({ sql, args: asArgs(args) })
+      return result.rows
+    },
+    run: async (...args) => {
+      const result = await client.execute({ sql, args: asArgs(args) })
+      return { changes: result.rowsAffected, lastInsertRowid: result.lastInsertRowid }
+    },
+  }
+}
+
+const db = { prepare, client }
+
+export async function initDB() {
+  await client.executeMultiple(`
     CREATE TABLE IF NOT EXISTS users (
       USER_ID TEXT PRIMARY KEY,
       USER_NAME TEXT,
@@ -145,30 +184,32 @@ export function initDB() {
     );
   `)
 
-  // Seed default admin
-  const admin = db.prepare('SELECT * FROM admins WHERE ADMIN_NAME = ?').get('admin')
+  const admin = await db.prepare('SELECT * FROM admins WHERE ADMIN_NAME = ?').get('admin')
   if (!admin) {
     const hash = bcrypt.hashSync('123456', 10)
-    db.prepare('INSERT INTO admins (ADMIN_ID, ADMIN_NAME, ADMIN_PASSWORD, ADMIN_STATUS, ADMIN_ADD_TIME) VALUES (?, ?, ?, ?, ?)')
+    await db.prepare('INSERT INTO admins (ADMIN_ID, ADMIN_NAME, ADMIN_PASSWORD, ADMIN_STATUS, ADMIN_ADD_TIME) VALUES (?, ?, ?, ?, ?)')
       .run(uuidv4(), 'admin', hash, 1, Date.now())
   }
 
-  // Migration: add MEET_TEACHER column
-  try { db.prepare('ALTER TABLE meets ADD COLUMN MEET_TEACHER TEXT DEFAULT ""').run() } catch (e) {}
-  try { db.prepare('ALTER TABLE meets ADD COLUMN MEET_TEACHER_ID TEXT DEFAULT ""').run() } catch (e) {}
-  try { db.prepare('ALTER TABLE users ADD COLUMN USER_ENROLL_YEAR TEXT DEFAULT ""').run() } catch (e) {}
-  try { db.prepare('ALTER TABLE users ADD COLUMN USER_ENROLL_GRADE TEXT DEFAULT ""').run() } catch (e) {}
-  try { db.prepare('ALTER TABLE users ADD COLUMN USER_CURRENT_GRADE TEXT DEFAULT ""').run() } catch (e) {}
-  try { db.prepare('ALTER TABLE users ADD COLUMN USER_SCHOOL_STATUS TEXT DEFAULT ""').run() } catch (e) {}
+  for (const sql of [
+    'ALTER TABLE meets ADD COLUMN MEET_TEACHER TEXT DEFAULT ""',
+    'ALTER TABLE meets ADD COLUMN MEET_TEACHER_ID TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_ENROLL_YEAR TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_ENROLL_GRADE TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_CURRENT_GRADE TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_SCHOOL_STATUS TEXT DEFAULT ""',
+  ]) {
+    try { await client.execute(sql) } catch {}
+  }
 
-  const unbound = db.prepare(`
+  const unbound = await db.prepare(`
     SELECT MEET_ID, MEET_TEACHER FROM meets
     WHERE (MEET_TEACHER_ID IS NULL OR MEET_TEACHER_ID = '') AND MEET_TEACHER != ''
   `).all()
   for (const row of unbound) {
-    const teacher = db.prepare('SELECT USER_ID FROM users WHERE USER_NAME = ? AND USER_TYPE = 2').get(row.MEET_TEACHER)
+    const teacher = await db.prepare('SELECT USER_ID FROM users WHERE USER_NAME = ? AND USER_TYPE = 2').get(row.MEET_TEACHER)
     if (teacher) {
-      db.prepare('UPDATE meets SET MEET_TEACHER_ID = ? WHERE MEET_ID = ?').run(teacher.USER_ID, row.MEET_ID)
+      await db.prepare('UPDATE meets SET MEET_TEACHER_ID = ? WHERE MEET_ID = ?').run(teacher.USER_ID, row.MEET_ID)
     }
   }
 }

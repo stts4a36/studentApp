@@ -1,7 +1,11 @@
 {
   "name": "study-appt-web",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "install:all": "npm --prefix client install && npm --prefix server install",
     "build": "npm --prefix client run build",
     "start": "npm --prefix server start",
     "host": "npm run build && npm start"

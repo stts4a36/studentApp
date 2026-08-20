@@ -1,31 +1,11 @@
-import express from 'express'
-import cors from 'cors'
-import os from 'os'
 import { existsSync } from 'fs'
+import os from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { initDB } from './db.js'
-import userRoutes from './routes/user.js'
-import meetRoutes from './routes/meet.js'
-import newsRoutes from './routes/news.js'
-import adminRoutes from './routes/admin.js'
-import workRoutes from './routes/work.js'
+import express from 'express'
+import app, { ensureDB } from './app.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const app = express()
-app.use(cors())
-app.use(express.json())
-
-// Initialize database
-initDB()
-
-// Routes
-app.use('/api/user', userRoutes)
-app.use('/api/meet', meetRoutes)
-app.use('/api/news', newsRoutes)
-app.use('/api/admin', adminRoutes)
-app.use('/api/work', workRoutes)
-
 const distDir = join(__dirname, '../client/dist')
 if (existsSync(distDir)) {
   app.use(express.static(distDir))
@@ -47,6 +27,8 @@ function lanUrls(port) {
 
 const PORT = Number(process.env.PORT || 4000)
 const HOST = process.env.HOST || '0.0.0.0'
+
+await ensureDB()
 app.listen(PORT, HOST, () => {
   console.log('StudyAppt web is running:')
   for (const url of lanUrls(PORT)) console.log(`  ${url}`)

@@ -1,8 +1,10 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',
-  timeout: 10000,
+  baseURL: import.meta.env.VITE_API_BASE
+    ? `${import.meta.env.VITE_API_BASE.replace(/\/$/, '')}/api`
+    : '/api',
+  timeout: 60000,
 })
 
 function requestUrl(config) {

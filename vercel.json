@@ -1,0 +1,14 @@
+{
+  "installCommand": "npm --prefix web/client install && npm --prefix web/server install",
+  "buildCommand": "npm --prefix web/client run build",
+  "outputDirectory": "web/client/dist",
+  "functions": {
+    "api/[[...path]].js": {
+      "maxDuration": 30,
+      "includeFiles": "web/server/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}
