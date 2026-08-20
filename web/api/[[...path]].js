@@ -1,4 +1,8 @@
-import app from '../server/app.js'
+module.exports = async function handler(req, res) {
+  const { default: app } = await import('../server/app.js')
+  return app(req, res)
+}
 
-export const config = { maxDuration: 30 }
-export default app
+module.exports.config = {
+  maxDuration: 30,
+}

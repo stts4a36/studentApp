@@ -24,6 +24,13 @@ export function ensureDB() {
   return ready
 }
 
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    hasTurso: Boolean(process.env.TURSO_DATABASE_URL),
+  })
+})
+
 app.use(async (_req, _res, next) => {
   try {
     await ensureDB()
@@ -31,10 +38,6 @@ app.use(async (_req, _res, next) => {
   } catch (err) {
     next(err)
   }
-})
-
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true })
 })
 
 app.use('/api/user', userRoutes)

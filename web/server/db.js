@@ -24,7 +24,11 @@ function createDbClient() {
   })
 }
 
-const client = createDbClient()
+let client
+function getClient() {
+  if (!client) client = createDbClient()
+  return client
+}
 
 function asArgs(args) {
   return args.length === 1 && Array.isArray(args[0]) ? args[0] : args
@@ -33,24 +37,29 @@ function asArgs(args) {
 function prepare(sql) {
   return {
     get: async (...args) => {
-      const result = await client.execute({ sql, args: asArgs(args) })
+      const result = await getClient().execute({ sql, args: asArgs(args) })
       return result.rows[0]
     },
     all: async (...args) => {
-      const result = await client.execute({ sql, args: asArgs(args) })
+      const result = await getClient().execute({ sql, args: asArgs(args) })
       return result.rows
     },
     run: async (...args) => {
-      const result = await client.execute({ sql, args: asArgs(args) })
+      const result = await getClient().execute({ sql, args: asArgs(args) })
       return { changes: result.rowsAffected, lastInsertRowid: result.lastInsertRowid }
     },
   }
 }
 
-const db = { prepare, client }
+const db = {
+  prepare,
+  get client() {
+    return getClient()
+  },
+}
 
 export async function initDB() {
-  await client.executeMultiple(`
+  await getClient().executeMultiple(`
     CREATE TABLE IF NOT EXISTS users (
       USER_ID TEXT PRIMARY KEY,
       USER_NAME TEXT,
@@ -199,7 +208,7 @@ export async function initDB() {
     'ALTER TABLE users ADD COLUMN USER_CURRENT_GRADE TEXT DEFAULT ""',
     'ALTER TABLE users ADD COLUMN USER_SCHOOL_STATUS TEXT DEFAULT ""',
   ]) {
-    try { await client.execute(sql) } catch {}
+    try { await getClient().execute(sql) } catch {}
   }
 
   const unbound = await db.prepare(`
