@@ -2,28 +2,35 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
 import PageHeader from '../../components/PageHeader'
+import GroupPerms from '../../components/GroupPerms'
 
 function AdminMeetEdit() {
   const { id } = useParams()
   const location = useLocation()
   const [form, setForm] = useState(null)
-  const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
   const meetTitle = form?.MEET_TITLE || location.state?.title || ''
 
   useEffect(() => {
-    api.get(`/admin/meet/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-      .then(res => setForm(res.data?.MEET_ID ? res.data : (res.MEET_ID ? res : res.data)))
-    api.get('/admin/teachers', { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-      .then(res => setTeachers(res.data || []))
+    api.get(`/admin/meet/${id}`, { headers }).then(res => {
+      const meet = res.data?.MEET_ID ? res.data : (res.MEET_ID ? res : res.data)
+      setForm({
+        ...meet,
+        teacherView: meet.MEET_TEACHER_VIEW === 0 ? 0 : 1,
+        teacherEdit: meet.MEET_TEACHER_EDIT === 0 ? 0 : 1,
+        studentView: meet.MEET_STUDENT_VIEW === 0 ? 0 : 1,
+        studentEdit: meet.MEET_STUDENT_EDIT === 0 ? 0 : 1,
+      })
+    })
   }, [id])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     try {
-      await api.put(`/admin/meet/${id}`, form, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
+      await api.put(`/admin/meet/${id}`, form, { headers })
       navigate('/admin/meet')
     } catch (err) { alert(err.msg || '儲存失敗') }
     finally { setLoading(false) }
@@ -32,7 +39,7 @@ function AdminMeetEdit() {
   if (!form) {
     return (
       <div className="page-container">
-        <PageHeader title="編輯預約項目" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
+        <PageHeader title="編輯活動" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
         <p className="empty-state">載入中...</p>
       </div>
     )
@@ -40,26 +47,17 @@ function AdminMeetEdit() {
 
   return (
     <div className="page-container">
-      <PageHeader title="編輯預約項目" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
-      <div className="card card-animate" style={{ maxWidth: 500 }}>
+      <PageHeader title="編輯活動" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
+      <div className="card card-animate" style={{ maxWidth: 640 }}>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>標題</label>
             <input type="text" value={form.MEET_TITLE || ''} onChange={e => setForm({...form, MEET_TITLE: e.target.value})} required />
           </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>教師</label>
-            <select
-              value={form.MEET_TEACHER_ID || teachers.find(t => t.USER_NAME === form.MEET_TEACHER)?.USER_ID || ''}
-              onChange={e => {
-                const t = teachers.find(x => x.USER_ID === e.target.value)
-                setForm({ ...form, MEET_TEACHER_ID: e.target.value, MEET_TEACHER: t?.USER_NAME || '' })
-              }}
-            >
-              <option value="">-- 請選擇教師 --</option>
-              {teachers.map(t => <option key={t.USER_ID} value={t.USER_ID}>{t.USER_NAME}</option>)}
-            </select>
-          </div>
+          <GroupPerms
+            value={form}
+            onChange={next => setForm({ ...form, ...next })}
+          />
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>分類名稱</label>
             <input type="text" value={form.MEET_CATE_NAME || ''} onChange={e => setForm({...form, MEET_CATE_NAME: e.target.value})} />
@@ -72,12 +70,22 @@ function AdminMeetEdit() {
               <option value={10}>開始前均可取消</option>
             </select>
           </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>開課前幾小時停止報名／取消</label>
+            <input
+              type="number"
+              min="0"
+              value={form.MEET_CUTOFF_HOURS ?? 24}
+              onChange={e => setForm({ ...form, MEET_CUTOFF_HOURS: Number(e.target.value) })}
+            />
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>0 代表開始前均可。預設 24 小時。</p>
+          </div>
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>狀態</label>
             <select value={form.MEET_STATUS} onChange={e => setForm({...form, MEET_STATUS: Number(e.target.value)})}>
               <option value={0}>未啟用</option>
               <option value={1}>使用中</option>
-              <option value={9}>停止預約</option>
+              <option value={9}>停止報名</option>
               <option value={10}>已關閉</option>
             </select>
           </div>

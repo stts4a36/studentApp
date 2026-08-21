@@ -6,7 +6,7 @@ import AcademicFields from '../components/AcademicFields'
 import { LogoMark } from '../components/icons'
 
 function Register() {
-  const [form, setForm] = useState({ name: '', mobile: '', password: '' })
+  const [form, setForm] = useState({ name: '', username: '', password: '' })
   const [academic, setAcademic] = useState({ enrollYear: '', enrollGrade: '', currentGrade: '' })
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -61,7 +61,7 @@ function Register() {
             <input type="text" placeholder="姓名" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
           </div>
           <div style={{ marginBottom: 18 }}>
-            <input type="text" placeholder="手機號" value={form.mobile} onChange={e => setForm({...form, mobile: e.target.value})} required />
+            <input type="text" placeholder="帳號（3–32字）" value={form.username} onChange={e => setForm({...form, username: e.target.value})} autoComplete="username" required />
           </div>
           <div style={{ marginBottom: 18 }}>
             <input type="password" placeholder="密碼" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />

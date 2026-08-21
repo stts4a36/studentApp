@@ -20,7 +20,7 @@ function Home() {
       </div>
       <section style={{ marginBottom: 36 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <h2 className="section-title">課程預約</h2>
+          <h2 className="section-title">公開活動</h2>
           <a onClick={() => navigate('/meet')} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>查看更多 →</a>
         </div>
         <div className="grid-cards">
@@ -32,14 +32,14 @@ function Home() {
               onClick={() => navigate(`/meet/${item.MEET_ID}`)}
             >
               <h3 style={{ fontSize: 16, marginBottom: 8, fontFamily: 'var(--font-display)' }}>{item.MEET_TITLE}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 8 }}>{item.MEET_CATE_NAME || '課程'}</p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 6 }}>{item.MEET_CATE_NAME || '活動'}</p>
               <span className={item.MEET_STATUS === 1 ? 'badge-success' : 'badge-muted'}>
                 {item.MEET_STATUS === 1 ? '預約中' : '已停止'}
               </span>
             </div>
           ))}
         </div>
-        {meets.length === 0 && <p className="empty-state">暫無課程</p>}
+        {meets.length === 0 && <p className="empty-state">暫無公開活動</p>}
       </section>
 
       <section>

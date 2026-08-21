@@ -47,8 +47,36 @@ export function authWork(req, res, next) {
     const decoded = jwt.verify(token, WORK_SECRET)
     req.teacherId = decoded.userId
     req.teacherName = decoded.userName
-    next()
+    req.userId = decoded.userId
+    return next()
+  } catch {}
+  try {
+    const decoded = jwt.verify(token, SECRET)
+    req.teacherId = decoded.userId
+    req.userId = decoded.userId
+    return next()
   } catch {
     return res.status(401).json({ msg: '登入已過期' })
   }
+}
+
+export function tryDecodeAny(req) {
+  const token = req.headers.authorization?.replace('Bearer ', '')
+  if (!token) return
+  try {
+    const decoded = jwt.verify(token, SECRET)
+    req.userId = decoded.userId
+    return
+  } catch {}
+  try {
+    const decoded = jwt.verify(token, WORK_SECRET)
+    req.teacherId = decoded.userId
+    req.teacherName = decoded.userName
+    req.userId = decoded.userId
+    return
+  } catch {}
+  try {
+    const decoded = jwt.verify(token, ADMIN_SECRET)
+    req.adminId = decoded.adminId
+  } catch {}
 }

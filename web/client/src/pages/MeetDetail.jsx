@@ -10,9 +10,11 @@ function MeetDetail() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get(`/meet/${id}`).then(res => setMeet(res.data))
-    api.get(`/meet/${id}/days`).then(res => setDays(res.data || []))
+    api.get(`/meet/${id}`).then(res => setMeet(res.data)).catch(() => setMeet({ missing: true }))
+    api.get(`/meet/${id}/days`).then(res => setDays(res.data || [])).catch(() => setDays([]))
   }, [id])
+
+  if (meet?.missing) return <div className="page-container"><p className="empty-state">找不到此活動</p></div>
 
   if (!meet) return <div className="page-container"><p className="empty-state">載入中...</p></div>
 
@@ -27,12 +29,15 @@ function MeetDetail() {
     <div className="page-container">
       <div className="card card-animate">
         <h2 style={{ fontSize: 22, marginBottom: 10 }}>{meet.MEET_TITLE}</h2>
-        {meet.MEET_TEACHER && (
-          <p style={{ color: 'var(--accent-gold)', fontSize: 14, marginBottom: 6 }}>教師：{meet.MEET_TEACHER}</p>
+        {meet.MEET_COVER && (
+          <img src={meet.MEET_COVER} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 12, marginBottom: 12 }} />
         )}
         <p style={{ color: 'var(--text-secondary)', marginBottom: 14 }}>{meet.MEET_CATE_NAME}</p>
+        {meet.MEET_DESC && (
+          <p style={{ color: 'var(--text-secondary)', marginBottom: 14, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{meet.MEET_DESC}</p>
+        )}
         <span className={meet.MEET_STATUS === 1 ? 'badge-success' : 'badge-muted'}>
-          {meet.MEET_STATUS === 1 ? '預約中' : '已停止'}
+          {meet.MEET_STATUS === 1 ? (meet.canEnroll === true || meet.MEET_STUDENT_EDIT === 1 ? '預約中' : '僅供檢視') : '已停止'}
         </span>
       </div>
 
@@ -43,11 +48,14 @@ function MeetDetail() {
           <h4 style={{ marginBottom: 10, color: 'var(--text-primary)' }}>{day.day} {day.dayDesc}</h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {(day.times || []).map((t, j) => {
-              const available = t.status === 1 && (!t.isLimit || t.limit > (t.stat?.succCnt || 0))
+                  const canEnroll = meet.canEnroll === true || meet.MEET_STUDENT_EDIT === 1
+                  const remaining = t.isLimit ? Math.max(0, t.limit - (t.stat?.succCnt || 0)) : 1
+                  const open = canEnroll && t.status === 1
+                  const full = remaining <= 0
               return (
                 <button
                   key={j}
-                  disabled={!available}
+                  disabled={!open}
                   onClick={() => {
                     if (!isLoggedIn()) { navigate('/login'); return }
                     navigate(`/meet/${id}/join`, { state: { meet, day: day.day, time: t } })
@@ -55,17 +63,18 @@ function MeetDetail() {
                   style={{
                     padding: '8px 16px',
                     borderRadius: 'var(--radius-sm)',
-                    border: available ? '1px solid var(--border-accent)' : '1px solid var(--border)',
-                    background: available ? 'var(--accent-soft)' : 'var(--bg-elevated)',
-                    color: available ? 'var(--accent)' : 'var(--text-muted)',
-                    cursor: available ? 'pointer' : 'not-allowed',
+                    border: open ? '1px solid var(--border-accent)' : '1px solid var(--border)',
+                    background: open ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+                    color: open ? 'var(--accent)' : 'var(--text-muted)',
+                    cursor: open ? 'pointer' : 'not-allowed',
                     fontSize: 13,
                     fontWeight: 500,
                   }}
                 >
                   {t.start}-{t.end}
+                  {t.teacherName ? ` · ${t.teacherName}` : ''}
                   {t.isLimit && <span style={{ fontSize: 11, marginLeft: 4, opacity: 0.8 }}>
-                    (剩{Math.max(0, t.limit - (t.stat?.succCnt || 0))}位)
+                    {full ? '(已滿·候補)' : `(剩${remaining}位)`}
                   </span>}
                 </button>
               )

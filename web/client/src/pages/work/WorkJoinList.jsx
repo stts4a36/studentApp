@@ -1,73 +1,84 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
 import PageHeader from '../../components/PageHeader'
 import { pickMeetTitle } from '../../utils/meet'
 
 function WorkJoinList() {
+  const { id } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const [list, setList] = useState([])
-  const [meetTitle, setMeetTitle] = useState(localStorage.getItem('workMeetTitle') || '')
-  const meetId = localStorage.getItem('workMeetId')
-  const headers = { Authorization: `Bearer ${localStorage.getItem('workToken')}` }
+  const [meetTitle, setMeetTitle] = useState(location.state?.title || '')
+  const [canEdit, setCanEdit] = useState(true)
 
   useEffect(() => {
-    if (!meetId) return
-    api.get(`/work/meet/${meetId}/joins`, { headers }).then(res => setList(res.data || []))
-    api.get(`/work/meet/${meetId}`, { headers }).then(res => {
-      const title = pickMeetTitle(res, localStorage.getItem('workMeetTitle') || '')
-      setMeetTitle(title)
-      if (title) localStorage.setItem('workMeetTitle', title)
+    api.get(`/work/meet/${id}/joins`).then(res => setList(res.data || [])).catch(() => {
+      alert('沒有此活動的管理權')
+      navigate('/work/meet')
     })
-  }, [])
-
-  const handleCheckin = async (joinId) => {
-    await api.post(`/work/joins/${joinId}/checkin`, {}, { headers })
-    setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
-  }
+    api.get(`/work/meet/${id}`).then(res => {
+      setMeetTitle(pickMeetTitle(res, location.state?.title || ''))
+      const meet = res.data || res
+      setCanEdit(meet.canTeacherEdit !== false)
+    })
+  }, [id])
 
   const handleCancel = async (joinId) => {
-    if (!confirm('確定取消？')) return
-    await api.post(`/work/joins/${joinId}/cancel`, {}, { headers })
+    if (!confirm('確定取消此預約？')) return
+    await api.post(`/work/joins/${joinId}/cancel`, {})
     setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
   }
 
-  if (!meetId) return <div className="page-container">請先在首頁選擇課程</div>
+  const handleCheckin = async (joinId) => {
+    await api.post(`/work/joins/${joinId}/checkin`, {})
+    setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+  }
 
   return (
     <div className="page-container">
-      <PageHeader title="預約名單" subtitle={meetTitle} onBack={() => navigate('/work')} />
-      <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8 }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
-            <th style={{ padding: 12, textAlign: 'left' }}>日期</th>
-            <th style={{ padding: 12, textAlign: 'left' }}>時段</th>
-            <th style={{ padding: 12, textAlign: 'center' }}>核驗碼</th>
-            <th style={{ padding: 12, textAlign: 'center' }}>狀態</th>
-            <th style={{ padding: 12, textAlign: 'center' }}>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map(item => (
-            <tr key={item.JOIN_ID} style={{ borderBottom: '1px solid #f0f0f0' }}>
-              <td style={{ padding: 12 }}>{item.JOIN_MEET_DAY}</td>
-              <td style={{ padding: 12 }}>{item.JOIN_MEET_TIME_START}-{item.JOIN_MEET_TIME_END}</td>
-              <td style={{ padding: 12, textAlign: 'center' }}>{item.JOIN_CODE}</td>
-              <td style={{ padding: 12, textAlign: 'center' }}>
-                {item.JOIN_STATUS === 1 ? (item.JOIN_IS_CHECKIN ? '已核銷' : '待核銷') : '已取消'}
-              </td>
-              <td style={{ padding: 12, textAlign: 'center' }}>
-                {item.JOIN_STATUS === 1 && !item.JOIN_IS_CHECKIN && (
-                  <>
-                    <button className="btn-link" onClick={() => handleCheckin(item.JOIN_ID)}>核銷</button>
-                    <button className="btn-link" style={{ color: 'var(--danger)' }} onClick={() => handleCancel(item.JOIN_ID)}>取消</button>
-                  </>
-                )}
-              </td>
+      <PageHeader title="報名名單" subtitle={meetTitle} onBack={() => navigate('/work/meet')} />
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>日期</th>
+              <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>時段</th>
+              <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>核驗碼</th>
+              <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>狀態</th>
+              <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>核銷</th>
+              <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {list.map(item => (
+              <tr key={item.JOIN_ID} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: 12, fontSize: 14, color: 'var(--accent-gold)' }}>{item.JOIN_MEET_DAY}</td>
+                <td style={{ padding: 12, fontSize: 14 }}>{item.JOIN_MEET_TIME_START}-{item.JOIN_MEET_TIME_END}</td>
+                <td style={{ padding: 12, fontSize: 13, fontWeight: 600, letterSpacing: '0.03em' }}>{item.JOIN_CODE}</td>
+                <td style={{ padding: 12, textAlign: 'center' }}>
+                  <span className={item.JOIN_STATUS === 1 ? 'badge-success' : 'badge-muted'}>
+                    {item.JOIN_STATUS === 1 ? '成功' : item.JOIN_STATUS === 10 ? '已取消' : '系統取消'}
+                  </span>
+                </td>
+                <td style={{ padding: 12, textAlign: 'center' }}>
+                  <span className={item.JOIN_IS_CHECKIN ? 'badge-success' : 'badge-warning'}>
+                    {item.JOIN_IS_CHECKIN ? '已核銷' : '未核銷'}
+                  </span>
+                </td>
+                <td style={{ padding: 12, textAlign: 'center' }}>
+                  {canEdit && item.JOIN_STATUS === 1 && !item.JOIN_IS_CHECKIN && (
+                    <>
+                      <button className="btn-link" style={{ color: 'var(--success)' }} onClick={() => handleCheckin(item.JOIN_ID)}>核銷</button>
+                      <button className="btn-link" style={{ color: 'var(--danger)', marginLeft: 8 }} onClick={() => handleCancel(item.JOIN_ID)}>取消</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {list.length === 0 && <p className="empty-state">暫無資料</p>}
     </div>
   )

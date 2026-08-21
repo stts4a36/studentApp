@@ -22,7 +22,7 @@ function MyJoinDetail() {
   useEffect(() => { load() }, [id])
 
   const handleCancel = async () => {
-    if (!confirm('確定取消此預約？課時將退還。須於上課 24 小時前操作。')) return
+    if (!confirm(`確定取消此預約？課時將退還。須於上課 ${join.cutoffHours ?? 24} 小時前操作。`)) return
     setCancelling(true)
     try {
       await api.post(`/meet/my-joins/${id}/cancel`)
@@ -58,6 +58,19 @@ function MyJoinDetail() {
     }
   }
 
+  const handleLeaveWait = async () => {
+    if (!confirm('確定退出候補？')) return
+    setCancelling(true)
+    try {
+      await api.post(`/meet/my-joins/${id}/leave-waitlist`)
+      setJoin({ ...join, JOIN_STATUS: 10, canLeaveWait: false })
+    } catch (err) {
+      alert(err.msg || '退出失敗')
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   if (!join) return <div className="page-container"><p className="empty-state">載入中...</p></div>
 
   const options = []
@@ -68,7 +81,7 @@ function MyJoinDetail() {
       if (t.status !== 1 || full) continue
       const startMs = new Date(`${d.day}T${t.start}:00`).getTime()
       if (startMs <= Date.now()) continue
-      options.push({ day: d.day, mark: t.mark, label: `${d.day} ${t.start}-${t.end}` })
+      options.push({ day: d.day, mark: t.mark, label: `${d.day} ${t.start}-${t.end}${t.teacherName ? ` · ${t.teacherName}` : ''}` })
     }
   }
 
@@ -82,8 +95,8 @@ function MyJoinDetail() {
           <p style={{ marginBottom: 6, fontSize: 14 }}><span style={{ color: 'var(--text-muted)' }}>核驗碼：</span><span style={{ fontWeight: 600, letterSpacing: '0.05em' }}>{join.JOIN_CODE}</span></p>
           <p style={{ fontSize: 14 }}>
             <span style={{ color: 'var(--text-muted)' }}>狀態：</span>
-            <span className={join.JOIN_STATUS === 1 ? 'badge-success' : 'badge-muted'}>
-              {join.JOIN_STATUS === 1 ? '預約成功' : join.JOIN_STATUS === 10 ? '已取消' : '系統取消'}
+            <span className={join.JOIN_STATUS === 1 ? 'badge-success' : join.JOIN_STATUS === 2 ? 'badge-warning' : 'badge-muted'}>
+              {join.JOIN_STATUS === 1 ? '預約成功' : join.JOIN_STATUS === 2 ? '候補中' : join.JOIN_STATUS === 10 ? '已取消' : '系統取消'}
             </span>
           </p>
         </div>
@@ -99,7 +112,7 @@ function MyJoinDetail() {
 
         {join.JOIN_STATUS === 1 && join.canChange && (
           <div style={{ marginBottom: 16 }}>
-            <h4 style={{ fontSize: 14, marginBottom: 8 }}>更改課堂（須於上課 24 小時前）</h4>
+            <h4 style={{ fontSize: 14, marginBottom: 8 }}>更改課堂（須於上課 {join.cutoffHours ?? 24} 小時前）</h4>
             {options.length === 0 ? (
               <p className="empty-state">暫無其他可改時段</p>
             ) : (
@@ -117,9 +130,24 @@ function MyJoinDetail() {
         )}
 
         {join.JOIN_STATUS === 1 && !join.canChange && (
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>距上課不足 24 小時，無法更改或取消。</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>距上課不足 {join.cutoffHours ?? 24} 小時，無法更改或取消。</p>
         )}
 
+        {join.JOIN_STATUS === 2 && (
+          <button
+            onClick={handleLeaveWait}
+            disabled={cancelling}
+            style={{
+              width: '100%', padding: 12,
+              background: 'var(--danger-soft)', color: 'var(--danger)',
+              border: '1px solid rgba(231, 76, 60, 0.28)',
+              borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+              fontWeight: 600, fontSize: 15,
+            }}
+          >
+            {cancelling ? '處理中...' : '退出候補'}
+          </button>
+        )}
         {join.JOIN_STATUS === 1 && (
           <button
             onClick={handleCancel}

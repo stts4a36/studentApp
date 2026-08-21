@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import SlotTimeModal from '../components/SlotTimeModal'
+import { SlotTeacher } from '../components/TeacherFace'
 import { groupDaysByDate } from '../utils/days'
 
 function MyCourse() {
@@ -178,7 +179,7 @@ function MyCourse() {
               <div key={item.JOIN_ID} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <span style={{ fontWeight: 500, fontSize: 14 }}>{item.USER_NAME || '-'}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 13, marginLeft: 10 }}>{item.USER_MOBILE || ''}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 13, marginLeft: 10 }}>{item.USER_USERNAME || item.USER_MOBILE || ''}</span>
                   <span style={{ marginLeft: 10 }} className={item.JOIN_STATUS === 1 ? (item.JOIN_IS_CHECKIN ? 'badge-success' : 'badge-warning') : 'badge-muted'}>
                     {item.JOIN_STATUS === 1 ? (item.JOIN_IS_CHECKIN ? '已核銷' : '待核銷') : '已取消'}
                   </span>
@@ -238,8 +239,9 @@ function MyCourse() {
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       border: '1px solid var(--border)', flexWrap: 'wrap', gap: 8,
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 500, fontSize: 14 }}>{t.start}-{t.end}</span>
+                        <SlotTeacher slot={t} />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                           限{t.limit}人 · 已約{t.stat?.succCnt || 0}人
                         </span>
@@ -283,7 +285,7 @@ function MyCourse() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>學員</th>
-                <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>手機</th>
+                <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>帳號</th>
                 <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>日期</th>
                 <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>時段</th>
                 <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>核驗碼</th>
@@ -295,7 +297,7 @@ function MyCourse() {
               {joins.map(item => (
                 <tr key={item.JOIN_ID} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: 12, fontSize: 14 }}>{item.USER_NAME || '-'}</td>
-                  <td style={{ padding: 12, fontSize: 14, color: 'var(--text-secondary)' }}>{item.USER_MOBILE || '-'}</td>
+                  <td style={{ padding: 12, fontSize: 14, color: 'var(--text-secondary)' }}>{item.USER_USERNAME || item.USER_MOBILE || '-'}</td>
                   <td style={{ padding: 12, fontSize: 14, color: 'var(--accent-gold)' }}>{item.JOIN_MEET_DAY}</td>
                   <td style={{ padding: 12, fontSize: 14 }}>{item.JOIN_MEET_TIME_START}-{item.JOIN_MEET_TIME_END}</td>
                   <td style={{ padding: 12, textAlign: 'center', fontSize: 13, fontWeight: 600, letterSpacing: '0.03em' }}>{item.JOIN_CODE}</td>

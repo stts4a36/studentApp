@@ -1,9 +1,31 @@
 import { v4 as uuidv4 } from 'uuid'
+import { assertSlotsFreeForMeet } from './teacherConflict.js'
+import { notify } from './ops.js'
 
 const HOURS_24 = 24 * 60 * 60 * 1000
 
 export function parseJSON(str, fallback = []) {
   try { return JSON.parse(str) } catch { return fallback }
+}
+
+export function prepareNewSlots(times, teacherId = '') {
+  return (times || []).map(t => {
+    const id = t.teacherId || teacherId || ''
+    const slot = {
+      start: t.start,
+      end: t.end,
+      limit: t.limit,
+      mark: uuidv4().slice(0, 8),
+      status: 1,
+      isLimit: true,
+      stat: { succCnt: 0, cancelCnt: 0, adminCancelCnt: 0 },
+    }
+    if (id) {
+      slot.teacherId = id
+      if (t.teacherName) slot.teacherName = t.teacherName
+    }
+    return slot
+  })
 }
 
 export function classStartMs(day, timeStart) {
@@ -91,18 +113,8 @@ export async function applySlotTimeChange(db, { meetId, dayId, mark, newDay, sta
   let targetRow = targetDay === dayRow.day
     ? dayRow
     : await db.prepare('SELECT * FROM days WHERE DAY_MEET_ID = ? AND day = ?').get(meetId, targetDay)
-  const targetTimes = targetRow
-    ? (targetRow.DAY_ID === dayRow.DAY_ID ? times : parseJSON(targetRow.times))
-    : []
 
-  for (const other of targetTimes) {
-    if (other.mark === mark) continue
-    if (start < other.end && end > other.start) {
-      const err = new Error(`時段 ${start}-${end} 與已有時段 ${other.start}-${other.end} 衝突`)
-      err.status = 400
-      throw err
-    }
-  }
+  await assertSlotsFreeForMeet(db, meetId, targetDay, [{ start, end, teacherId: slot.teacherId, mark }], mark)
 
   slot.start = start
   slot.end = end
@@ -136,6 +148,22 @@ export async function applySlotTimeChange(db, { meetId, dayId, mark, newDay, sta
     for (const join of enrolled) {
       await db.prepare('UPDATE joins SET JOIN_MEET_DAY = ?, JOIN_MEET_TIME_START = ?, JOIN_MEET_TIME_END = ?, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?')
         .run(targetDay, start, end, now, join.JOIN_ID)
+      await notify(db, {
+        userId: join.JOIN_USER_ID,
+        title: '課堂時間已更改',
+        body: `${join.JOIN_MEET_TITLE || '活動'} 已改至 ${targetDay} ${start}–${end}`,
+        meetId,
+      })
+    }
+  }
+  if (enrolled.length > 0 && studentAction === 'refund') {
+    for (const join of enrolled) {
+      await notify(db, {
+        userId: join.JOIN_USER_ID,
+        title: '課堂已取消',
+        body: `${join.JOIN_MEET_TITLE || '活動'} ${dayRow.day} ${slot.start}–${slot.end} 已取消，課時已退還。`,
+        meetId,
+      })
     }
   }
 

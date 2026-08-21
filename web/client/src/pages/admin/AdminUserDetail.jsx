@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
 import AcademicFields from '../../components/AcademicFields'
 import { schoolStatusClass } from '../../utils/studentAcademic'
+import PageHeader from '../../components/PageHeader'
+import AvatarPicker from '../../components/AvatarPicker'
 
 function AdminUserDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [joins, setJoins] = useState([])
   const [logs, setLogs] = useState([])
+  const [teaching, setTeaching] = useState([])
   const [change, setChange] = useState(0)
   const [desc, setDesc] = useState('')
   const [editMode, setEditMode] = useState(false)
-  const [editForm, setEditForm] = useState({ name: '', mobile: '', status: 1, enrollYear: '', enrollGrade: '', currentGrade: '' })
+  const [editForm, setEditForm] = useState({ name: '', username: '', status: 1, enrollYear: '', enrollGrade: '', currentGrade: '' })
   const [newPwd, setNewPwd] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -23,7 +27,7 @@ function AdminUserDetail() {
       setUser(res.data)
       setEditForm({
         name: res.data.USER_NAME,
-        mobile: res.data.USER_MOBILE,
+        username: res.data.USER_USERNAME || res.data.USER_MOBILE || '',
         status: res.data.USER_STATUS,
         enrollYear: res.data.USER_ENROLL_YEAR || '',
         enrollGrade: res.data.USER_ENROLL_GRADE || '',
@@ -35,6 +39,10 @@ function AdminUserDetail() {
   useEffect(() => {
     loadUser()
     api.get(`/admin/users/${id}/joins`, { headers }).then(res => setJoins(res.data || []))
+    api.get(`/admin/users/${id}/schedule`, { headers }).then(res => {
+      setTeaching(res.data?.teaching || [])
+      if (res.data?.joins) setJoins(prev => prev.length ? prev : res.data.joins)
+    })
     api.get(`/admin/users/${id}/lesson-logs`, { headers }).then(res => setLogs(res.data || []))
   }, [id])
 
@@ -72,6 +80,18 @@ function AdminUserDetail() {
     } catch (err) { alert(err.msg || '重置失敗') }
   }
 
+  const handleAvatar = async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const res = await api.post(`/admin/users/${id}/avatar`, fd, { headers })
+      const next = res.data || res
+      setUser(next)
+    } catch (err) {
+      alert(err.msg || '頭像上傳失敗')
+    }
+  }
+
   const handleTypeChange = async (newType) => {
     await api.post(`/admin/users/${id}/type`, { type: newType }, { headers })
     setUser({ ...user, USER_TYPE: newType })
@@ -97,16 +117,22 @@ function AdminUserDetail() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">用戶詳情</h2>
+      <PageHeader
+        title="用戶詳情"
+        subtitle={user.USER_NAME}
+        onBack={() => navigate(user.USER_TYPE === 2 ? '/admin/users/teachers' : '/admin/users/students')}
+      />
 
       {/* Profile card */}
       <div className="card card-animate">
         {!editMode ? (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <AvatarPicker src={user.USER_AVATAR} name={user.USER_NAME} id={user.USER_ID} colorIndex={user.USER_COLOR_INDEX} onFile={handleAvatar} size={72} />
+                <div>
                 <h3 style={{ fontSize: 18, marginBottom: 8 }}>{user.USER_NAME}</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 4 }}>手機：{user.USER_MOBILE}</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 4 }}>帳號：{user.USER_USERNAME || user.USER_MOBILE || '-'}</p>
                 <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>
                   身份：<span style={{ color: user.USER_TYPE === 2 ? 'var(--accent-gold)' : 'var(--text-primary)' }}>{user.USER_TYPE === 2 ? '教師' : '學員'}</span>
                   　帳號：<span className={user.USER_STATUS === 1 ? 'badge-success' : 'badge-muted'}>{user.USER_STATUS === 1 ? '正常' : '停用'}</span>
@@ -117,6 +143,7 @@ function AdminUserDetail() {
                     {user.USER_CURRENT_GRADE && <span>　{user.USER_ENROLL_YEAR} 入學 {user.USER_ENROLL_GRADE} → {user.USER_CURRENT_GRADE}</span>}
                   </p>
                 )}
+                </div>
               </div>
               <button className="btn-primary-sm" onClick={() => setEditMode(true)}>編輯</button>
             </div>
@@ -139,8 +166,8 @@ function AdminUserDetail() {
               <input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
             </div>
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>手機</label>
-              <input type="text" value={editForm.mobile} onChange={e => setEditForm({...editForm, mobile: e.target.value})} />
+              <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>帳號</label>
+              <input type="text" value={editForm.username} onChange={e => setEditForm({...editForm, username: e.target.value})} />
             </div>
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>身份</label>
@@ -192,9 +219,60 @@ function AdminUserDetail() {
         </div>
       </div>
 
+      {/* Member schedule */}
+      <div className="card card-animate" style={{ animationDelay: '0.25s', marginTop: 16 }}>
+        <h3 style={{ fontSize: 16, marginBottom: 12 }}>成員行程</h3>
+        {teaching.length > 0 && (
+          <>
+            <h4 style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>授課</h4>
+            {Object.entries(teaching.reduce((acc, item) => {
+              if (!acc[item.day]) acc[item.day] = []
+              acc[item.day].push(item)
+              return acc
+            }, {})).sort(([a], [b]) => a.localeCompare(b)).map(([day, items]) => (
+              <div key={day} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{day}</div>
+                {items.map((item, i) => (
+                  <p key={`${item.meetId}-${i}`} style={{ color: 'var(--text-secondary)', fontSize: 13, paddingLeft: 8 }}>
+                    {item.start}-{item.end}　{item.title}
+                  </p>
+                ))}
+              </div>
+            ))}
+          </>
+        )}
+        {(() => {
+          const active = joins.filter(j => j.JOIN_STATUS === 1)
+          const byDay = active.reduce((acc, item) => {
+            const day = item.JOIN_MEET_DAY || '未定'
+            if (!acc[day]) acc[day] = []
+            acc[day].push(item)
+            return acc
+          }, {})
+          const days = Object.keys(byDay).sort()
+          if (days.length === 0 && teaching.length === 0) return <p className="empty-state">暫無行程</p>
+          if (days.length === 0) return null
+          return (
+            <>
+              <h4 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '12px 0 8px' }}>報名</h4>
+              {days.map(day => (
+                <div key={day} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{day}</div>
+                  {byDay[day].sort((a, b) => (a.JOIN_MEET_TIME_START || '').localeCompare(b.JOIN_MEET_TIME_START || '')).map(item => (
+                    <p key={item.JOIN_ID} style={{ color: 'var(--text-secondary)', fontSize: 13, paddingLeft: 8 }}>
+                      {item.JOIN_MEET_TIME_START}-{item.JOIN_MEET_TIME_END}　{item.JOIN_MEET_TITLE}
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </>
+          )
+        })()}
+      </div>
+
       {/* Joins */}
       <div className="card card-animate" style={{ animationDelay: '0.3s', marginTop: 16 }}>
-        <h3 style={{ fontSize: 16, marginBottom: 12 }}>預約記錄</h3>
+        <h3 style={{ fontSize: 16, marginBottom: 12 }}>報名紀錄</h3>
         {joins.length === 0 && <p className="empty-state">暫無預約記錄</p>}
         {joins.map(item => (
           <div key={item.JOIN_ID} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>

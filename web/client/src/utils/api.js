@@ -27,7 +27,7 @@ api.interceptors.request.use((config) => {
     let token = null
     if (url.startsWith('/admin')) token = localStorage.getItem('adminToken')
     else if (url.startsWith('/work')) token = localStorage.getItem('workToken')
-    else token = localStorage.getItem('token')
+    else token = localStorage.getItem('token') || localStorage.getItem('workToken')
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
   return config

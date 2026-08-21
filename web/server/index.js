@@ -1,16 +1,20 @@
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import os from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import express from 'express'
 import app, { ensureDB } from './app.js'
+import { uploadsRoot } from './avatar.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+mkdirSync(uploadsRoot, { recursive: true })
+app.use('/uploads', express.static(uploadsRoot))
+
 const distDir = join(__dirname, '../client/dist')
 if (existsSync(distDir)) {
   app.use(express.static(distDir))
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) return next()
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next()
     res.sendFile(join(distDir, 'index.html'))
   })
 }

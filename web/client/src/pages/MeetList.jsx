@@ -14,7 +14,7 @@ function MeetList() {
     <div className="page-container">
       <div className="content-title-row">
         <span className="content-title-icon" />
-        <h1 className="content-title">課程預約</h1>
+        <h1 className="content-title">公開活動</h1>
       </div>
       <div className="grid-cards">
         {list.map((item, i) => (
@@ -25,14 +25,14 @@ function MeetList() {
             onClick={() => navigate(`/meet/${item.MEET_ID}`)}
           >
             <h3 style={{ fontSize: 16, marginBottom: 8 }}>{item.MEET_TITLE}</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 8 }}>{item.MEET_CATE_NAME || '課程'}</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 6 }}>{item.MEET_CATE_NAME || '活動'}</p>
             <span className={item.MEET_STATUS === 1 ? 'badge-success' : 'badge-muted'}>
               {item.MEET_STATUS === 1 ? '預約中' : '已停止'}
             </span>
           </div>
         ))}
       </div>
-      {list.length === 0 && <p className="empty-state">暫無課程</p>}
+      {list.length === 0 && <p className="empty-state">暫無公開活動</p>}
     </div>
   )
 }

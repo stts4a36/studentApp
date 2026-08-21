@@ -4,7 +4,7 @@ import api from '../../utils/api'
 import { LogoMark } from '../../components/icons'
 
 function WorkLogin() {
-  const [form, setForm] = useState({ phone: '', password: '' })
+  const [form, setForm] = useState({ username: '', password: '' })
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
@@ -40,11 +40,11 @@ function WorkLogin() {
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
           <LogoMark size={36} />
         </div>
-        <h2 style={{ textAlign: 'center', marginBottom: 8, fontFamily: 'var(--font-display)', fontSize: 24 }}>教師登入</h2>
-        <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginBottom: 28 }}>教師工作台</p>
+        <h2 style={{ textAlign: 'center', marginBottom: 8, fontFamily: 'var(--font-display)', fontSize: 24 }}>教師後台登入</h2>
+        <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginBottom: 28 }}>教師或有管理權的學員</p>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 18 }}>
-            <input type="text" placeholder="手機號" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} required />
+            <input type="text" placeholder="帳號" value={form.username} onChange={e => setForm({...form, username: e.target.value})} autoComplete="username" required />
           </div>
           <div style={{ marginBottom: 24 }}>
             <input type="password" placeholder="密碼" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />

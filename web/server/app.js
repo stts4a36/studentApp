@@ -10,6 +10,7 @@ import workRoutes from './routes/work.js'
 const app = express()
 app.use(cors())
 app.use((req, res, next) => {
+  if (String(req.headers['content-type'] || '').includes('multipart/form-data')) return next()
   if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
     return next()
   }

@@ -23,7 +23,7 @@ function AdminHome() {
         </div>
         <div className="card card-animate" style={{ textAlign: 'center', animationDelay: '0.08s' }}>
           <div className="stat-number" style={{ color: 'var(--success)' }}>{stats.meetCount || 0}</div>
-          <div style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: 13 }}>預約項目</div>
+          <div style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: 13 }}>活動數量</div>
         </div>
         <div className="card card-animate" style={{ textAlign: 'center', animationDelay: '0.16s' }}>
           <div className="stat-number" style={{ color: 'var(--accent-gold)' }}>{stats.joinCount || 0}</div>

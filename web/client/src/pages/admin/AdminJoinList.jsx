@@ -30,7 +30,7 @@ function AdminJoinList() {
 
   return (
     <div className="page-container">
-      <PageHeader title="預約名單" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
+      <PageHeader title="報名名單" subtitle={meetTitle} onBack={() => navigate('/admin/meet')} />
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
           <thead>

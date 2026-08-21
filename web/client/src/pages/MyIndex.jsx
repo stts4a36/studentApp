@@ -33,8 +33,14 @@ function MyIndex() {
         </div>
         <div className="card card-animate">
           <h2 style={{ fontSize: 20, marginBottom: 10 }}>{user.USER_NAME || '教師'}</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>手機：{user.USER_MOBILE}</p>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>帳號：{user.USER_USERNAME || user.USER_MOBILE || '-'}</p>
           <span className="badge-warning">教師</span>
+        </div>
+        <div className="card card-animate" style={{ cursor: 'pointer' }} onClick={() => navigate('/my/profile')}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 500 }}>個人資料／頭像</span>
+            <span style={{ color: 'var(--text-muted)' }}>→</span>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14, marginTop: 20 }}>
@@ -56,8 +62,7 @@ function MyIndex() {
         {meets.length === 0 && <p className="empty-state">暫無分配的課程</p>}
         {meets.map((m, i) => (
           <div key={m.MEET_ID} className="card card-animate" style={{ cursor: 'pointer', animationDelay: `${i * 0.06 + 0.4}s` }} onClick={() => {
-            localStorage.setItem('workMeetId', m.MEET_ID)
-            navigate('/work/course')
+            navigate(`/work/meet/${m.MEET_ID}/time`, { state: { title: m.MEET_TITLE } })
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 500 }}>{m.MEET_TITLE}</span>
@@ -70,13 +75,13 @@ function MyIndex() {
 
         <div className="card card-animate" style={{ cursor: 'pointer', marginTop: 16 }} onClick={() => navigate('/work')}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 500 }}>進入教師工作台</span>
+            <span style={{ fontWeight: 500 }}>進入工作台</span>
             <span style={{ color: 'var(--text-muted)' }}>→</span>
           </div>
         </div>
         <div className="card card-animate" style={{ cursor: 'pointer' }} onClick={() => navigate('/my/joins')}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 500 }}>我的預約</span>
+            <span style={{ fontWeight: 500 }}>我的行程</span>
             <span style={{ color: 'var(--text-muted)' }}>→</span>
           </div>
         </div>
@@ -98,7 +103,7 @@ function MyIndex() {
       </div>
       <div className="card card-animate">
         <h2 style={{ fontSize: 20, marginBottom: 10 }}>{user.USER_NAME || '用戶'}</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>手機：{user.USER_MOBILE || '未設定'}</p>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>帳號：{user.USER_USERNAME || user.USER_MOBILE || '未設定'}</p>
         {user.USER_SCHOOL_STATUS && (
           <p style={{ fontSize: 14, marginBottom: 4 }}>
             學籍：<span className={schoolStatusClass(user.USER_SCHOOL_STATUS)}>{user.USER_SCHOOL_STATUS}</span>
@@ -125,7 +130,7 @@ function MyIndex() {
       </div>
       <div className="card card-animate" style={{ cursor: 'pointer', animationDelay: '0.15s' }} onClick={() => navigate('/my/joins')}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 500 }}>我的預約</span>
+            <span style={{ fontWeight: 500 }}>我的行程</span>
           <span style={{ color: 'var(--text-muted)' }}>→</span>
         </div>
       </div>

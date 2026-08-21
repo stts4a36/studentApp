@@ -36,3 +36,6 @@ dist-ssr/
 *.db
 *.db-shm
 *.db-wal
+
+# Uploaded avatars
+web/server/uploads/

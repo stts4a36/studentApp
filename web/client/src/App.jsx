@@ -20,20 +20,18 @@ import AdminLogin from './pages/admin/AdminLogin'
 import AdminHome from './pages/admin/AdminHome'
 import AdminMeetList from './pages/admin/AdminMeetList'
 import AdminMeetAdd from './pages/admin/AdminMeetAdd'
-import AdminMeetEdit from './pages/admin/AdminMeetEdit'
-import AdminMeetTime from './pages/admin/AdminMeetTime'
-import AdminJoinList from './pages/admin/AdminJoinList'
+import MeetHub, { MeetHubRedirect } from './components/MeetHub'
 import AdminNewsList from './pages/admin/AdminNewsList'
 import AdminNewsAdd from './pages/admin/AdminNewsAdd'
 import AdminNewsEdit from './pages/admin/AdminNewsEdit'
 import AdminUserList from './pages/admin/AdminUserList'
 import AdminUserDetail from './pages/admin/AdminUserDetail'
+import AdminSchedule from './pages/admin/AdminSchedule'
 import WorkLayout from './components/WorkLayout'
 import WorkLogin from './pages/work/WorkLogin'
 import WorkHome from './pages/work/WorkHome'
-import WorkMeetEdit from './pages/work/WorkMeetEdit'
-import WorkMeetTime from './pages/work/WorkMeetTime'
-import WorkJoinList from './pages/work/WorkJoinList'
+import WorkMeetList from './pages/work/WorkMeetList'
+import WorkSchedule from './pages/work/WorkSchedule'
 
 function App() {
   return (
@@ -64,24 +62,38 @@ function App() {
         <Route index element={<AdminHome />} />
         <Route path="meet" element={<AdminMeetList />} />
         <Route path="meet/add" element={<AdminMeetAdd />} />
-        <Route path="meet/:id/edit" element={<AdminMeetEdit />} />
-        <Route path="meet/:id/time" element={<AdminMeetTime />} />
-        <Route path="meet/:id/joins" element={<AdminJoinList />} />
+        <Route path="meet/:id" element={<MeetHubRedirect mode="admin" />} />
+        <Route path="meet/:id/:tab" element={<MeetHub mode="admin" />} />
         <Route path="news" element={<AdminNewsList />} />
         <Route path="news/add" element={<AdminNewsAdd />} />
         <Route path="news/:id/edit" element={<AdminNewsEdit />} />
-        <Route path="users" element={<AdminUserList />} />
+        <Route path="users" element={<Navigate to="/admin/users/students" replace />} />
+        <Route path="users/teachers" element={<AdminUserList userType={2} />} />
+        <Route path="users/students" element={<AdminUserList userType={1} />} />
         <Route path="users/:id" element={<AdminUserDetail />} />
+        <Route path="schedule" element={<Navigate to="/admin/schedule/team" replace />} />
+        <Route path="schedule/teachers" element={<Navigate to="/admin/schedule/team" replace />} />
+        <Route path="schedule/students" element={<Navigate to="/admin/schedule/team" replace />} />
+        <Route path="schedule/team" element={<AdminSchedule view="team" />} />
+        <Route path="schedule/activity" element={<AdminSchedule view="activity" />} />
+        <Route path="schedule/calendar" element={<AdminSchedule view="calendar" />} />
       </Route>
 
       {/* Teacher pages */}
       <Route path="/work/login" element={<WorkLogin />} />
       <Route path="/work" element={<WorkLayout />}>
         <Route index element={<WorkHome />} />
-        <Route path="course" element={<MyCourse />} />
-        <Route path="meet/edit" element={<WorkMeetEdit />} />
-        <Route path="meet/time" element={<WorkMeetTime />} />
-        <Route path="meet/joins" element={<WorkJoinList />} />
+        <Route path="schedule" element={<Navigate to="/work/schedule/team" replace />} />
+        <Route path="schedule/team" element={<WorkSchedule view="team" />} />
+        <Route path="schedule/activity" element={<WorkSchedule view="activity" />} />
+        <Route path="schedule/calendar" element={<WorkSchedule view="calendar" />} />
+        <Route path="meet" element={<WorkMeetList />} />
+        <Route path="meet/:id" element={<MeetHubRedirect mode="work" />} />
+        <Route path="meet/:id/:tab" element={<MeetHub mode="work" />} />
+        <Route path="course" element={<Navigate to="/work/meet" replace />} />
+        <Route path="meet/edit" element={<Navigate to="/work/meet" replace />} />
+        <Route path="meet/time" element={<Navigate to="/work/meet" replace />} />
+        <Route path="meet/joins" element={<Navigate to="/work/meet" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

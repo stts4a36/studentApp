@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
 import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
+import { backfillColorIndexes } from './colorIndex.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -63,6 +64,7 @@ export async function initDB() {
     CREATE TABLE IF NOT EXISTS users (
       USER_ID TEXT PRIMARY KEY,
       USER_NAME TEXT,
+      USER_USERNAME TEXT UNIQUE,
       USER_MOBILE TEXT UNIQUE,
       USER_PASSWORD TEXT,
       USER_STATUS INTEGER DEFAULT 1,
@@ -191,6 +193,32 @@ export async function initDB() {
       FAV_PATH TEXT,
       FAV_ADD_TIME INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS meet_people (
+      MEET_ID TEXT NOT NULL,
+      USER_ID TEXT NOT NULL,
+      ROLE TEXT NOT NULL,
+      PRIMARY KEY (MEET_ID, USER_ID)
+    );
+
+    CREATE TABLE IF NOT EXISTS notices (
+      NOTICE_ID TEXT PRIMARY KEY,
+      NOTICE_USER_ID TEXT,
+      NOTICE_TITLE TEXT,
+      NOTICE_BODY TEXT DEFAULT '',
+      NOTICE_MEET_ID TEXT DEFAULT '',
+      NOTICE_READ INTEGER DEFAULT 0,
+      NOTICE_ADD_TIME INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS meet_logs (
+      LOG_ID TEXT PRIMARY KEY,
+      MEET_ID TEXT,
+      ACTOR_NAME TEXT DEFAULT '',
+      ACTION TEXT DEFAULT '',
+      DETAIL TEXT DEFAULT '',
+      ADD_TIME INTEGER
+    );
   `)
 
   const admin = await db.prepare('SELECT * FROM admins WHERE ADMIN_NAME = ?').get('admin')
@@ -203,13 +231,44 @@ export async function initDB() {
   for (const sql of [
     'ALTER TABLE meets ADD COLUMN MEET_TEACHER TEXT DEFAULT ""',
     'ALTER TABLE meets ADD COLUMN MEET_TEACHER_ID TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_USERNAME TEXT DEFAULT ""',
     'ALTER TABLE users ADD COLUMN USER_ENROLL_YEAR TEXT DEFAULT ""',
     'ALTER TABLE users ADD COLUMN USER_ENROLL_GRADE TEXT DEFAULT ""',
     'ALTER TABLE users ADD COLUMN USER_CURRENT_GRADE TEXT DEFAULT ""',
     'ALTER TABLE users ADD COLUMN USER_SCHOOL_STATUS TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_AVATAR TEXT DEFAULT ""',
+    'ALTER TABLE meets ADD COLUMN MEET_IS_PUBLIC INTEGER DEFAULT 1',
+    'ALTER TABLE meets ADD COLUMN MEET_TEACHER_VIEW INTEGER DEFAULT 1',
+    'ALTER TABLE meets ADD COLUMN MEET_TEACHER_EDIT INTEGER DEFAULT 1',
+    'ALTER TABLE meets ADD COLUMN MEET_CUTOFF_HOURS INTEGER DEFAULT 24',
+    'ALTER TABLE meets ADD COLUMN MEET_JOIN_CUTOFF_HOURS INTEGER DEFAULT 24',
+    'ALTER TABLE meets ADD COLUMN MEET_CANCEL_HOURS INTEGER DEFAULT 24',
+    'ALTER TABLE meets ADD COLUMN MEET_DESC TEXT DEFAULT ""',
+    'ALTER TABLE meets ADD COLUMN MEET_COVER TEXT DEFAULT ""',
+    'ALTER TABLE meets ADD COLUMN MEET_DEFAULT_LIMIT INTEGER DEFAULT 5',
+    'ALTER TABLE users ADD COLUMN USER_COLOR_INDEX INTEGER',
+    'ALTER TABLE meets ADD COLUMN MEET_COLOR_INDEX INTEGER',
   ]) {
     try { await getClient().execute(sql) } catch {}
   }
+
+  try { await getClient().execute('UPDATE meets SET MEET_IS_PUBLIC = 1 WHERE MEET_IS_PUBLIC IS NULL') } catch {}
+
+  try {
+    await getClient().execute('ALTER TABLE meets ADD COLUMN MEET_STUDENT_VIEW INTEGER DEFAULT 1')
+    await getClient().execute('UPDATE meets SET MEET_STUDENT_VIEW = COALESCE(MEET_IS_PUBLIC, 1)')
+  } catch {}
+  try {
+    await getClient().execute('ALTER TABLE meets ADD COLUMN MEET_STUDENT_EDIT INTEGER DEFAULT 1')
+    await getClient().execute('UPDATE meets SET MEET_STUDENT_EDIT = CASE WHEN COALESCE(MEET_IS_PUBLIC, 1) = 0 THEN 0 ELSE 1 END')
+  } catch {}
+
+  await getClient().execute(`
+    UPDATE users
+    SET USER_USERNAME = USER_MOBILE
+    WHERE (USER_USERNAME IS NULL OR USER_USERNAME = '')
+      AND USER_MOBILE IS NOT NULL AND USER_MOBILE != ''
+  `)
 
   const unbound = await db.prepare(`
     SELECT MEET_ID, MEET_TEACHER FROM meets
@@ -221,6 +280,15 @@ export async function initDB() {
       await db.prepare('UPDATE meets SET MEET_TEACHER_ID = ? WHERE MEET_ID = ?').run(teacher.USER_ID, row.MEET_ID)
     }
   }
+
+  await getClient().execute(`
+    INSERT OR IGNORE INTO meet_people (MEET_ID, USER_ID, ROLE)
+    SELECT MEET_ID, MEET_TEACHER_ID, 'teacher'
+    FROM meets
+    WHERE MEET_TEACHER_ID IS NOT NULL AND MEET_TEACHER_ID != ''
+  `)
+
+  await backfillColorIndexes(db)
 }
 
 export default db

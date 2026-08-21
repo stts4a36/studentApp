@@ -39,7 +39,7 @@ function SlotTimeModal({ slot, onClose, onSave }) {
           </div>
         </div>
         {enrolled > 0 && (
-          <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)' }}>
+          <div style={{ marginBottom: 16, padding: 12, background: '#fafbfc', border: '1px solid #eceef1', borderRadius: 12 }}>
             <p style={{ fontSize: 13, marginBottom: 10 }}>此時段已有 <b>{enrolled}</b> 位學生報名，請選擇：</p>
             <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, fontSize: 13 }}>
               <input type="radio" name="studentAction" checked={action === 'move'} onChange={() => setAction('move')} />

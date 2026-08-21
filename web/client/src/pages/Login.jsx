@@ -5,7 +5,7 @@ import { setAuth } from '../utils/auth'
 import { LogoMark } from '../components/icons'
 
 function Login() {
-  const [mobile, setMobile] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -14,7 +14,7 @@ function Login() {
     e.preventDefault()
     setLoading(true)
     try {
-      const res = await api.post('/user/login', { mobile, password })
+      const res = await api.post('/user/login', { username, password })
       setAuth(res.token, res.user)
       if (res.workToken) {
         localStorage.setItem('workToken', res.workToken)
@@ -72,9 +72,10 @@ function Login() {
           <div style={{ marginBottom: 18 }}>
             <input
               type="text"
-              placeholder="手機號"
-              value={mobile}
-              onChange={e => setMobile(e.target.value)}
+              placeholder="帳號"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              autoComplete="username"
               required
             />
           </div>
