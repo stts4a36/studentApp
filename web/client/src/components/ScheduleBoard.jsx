@@ -3,7 +3,7 @@ import dayjs from 'dayjs'
 import api from '../utils/api'
 import SlotPopover from './SlotPopover'
 import TeacherFace, { ActivityMark } from './TeacherFace'
-import { colorFor, activityColor, colorToken } from '../utils/color'
+import { colorFor, activityColor, courseToken, teacherColor } from '../utils/color'
 import { displayTitle, titleKind, hourLabel24, parseClock, WEEK_LABELS, WEEK_SHORT } from '../utils/days'
 import './ScheduleBoard.css'
 
@@ -111,6 +111,58 @@ function eventKey(ev, i = 0) {
 
 function slotKey(ev) {
   return `${ev.dayId || ''}|${ev.mark || ''}`
+}
+
+function uniqTeachers(list) {
+  const seen = new Set()
+  const out = []
+  for (const t of list || []) {
+    const id = t.USER_ID || t.USER_NAME
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(t)
+  }
+  return out
+}
+
+function groupBundles(items) {
+  const map = {}
+  const order = []
+  for (const ev of items || []) {
+    const key = `${ev.meetId}|${ev.day}|${ev.start}|${ev.end}`
+    if (!map[key]) {
+      map[key] = {
+        ...ev,
+        events: [ev],
+        teachers: [...(ev.teachers || [])],
+        students: [...(ev.students || [])],
+        enrolled: ev.enrolled || 0,
+        limit: ev.limit || 0,
+        checkedIn: ev.checkedIn || 0,
+        waiting: ev.waiting || 0,
+      }
+      order.push(key)
+    } else {
+      const b = map[key]
+      b.events.push(ev)
+      b.teachers = [...b.teachers, ...(ev.teachers || [])]
+      b.students = [...b.students, ...(ev.students || [])]
+      b.enrolled += ev.enrolled || 0
+      b.limit += ev.limit || 0
+      b.checkedIn += ev.checkedIn || 0
+      b.waiting += ev.waiting || 0
+    }
+  }
+  return order.map(key => {
+    const b = map[key]
+    b.teachers = uniqTeachers(b.teachers)
+    return b
+  })
+}
+
+function isOpenCard(ev, openKey) {
+  if (!openKey) return false
+  return (ev.events || [ev]).some(item => slotKey(item) === openKey)
 }
 
 function teacherSortName(ev) {
@@ -595,7 +647,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
                     const mine = events.filter(ev => ev.meetId === a.MEET_ID)
                     const upcoming = mine.filter(ev => ev.day >= today && ev.day <= weekEnd).length
                     const warn = mine.some(ev => ev.day >= today && missingTeacher(ev))
-                    const token = colorToken(a.MEET_COLOR_INDEX, a.MEET_ID)
+                    const token = courseToken(a.MEET_COLOR_INDEX, a.MEET_ID)
                     return {
                       id: a.MEET_ID,
                       selected: meetId === a.MEET_ID,
@@ -784,9 +836,8 @@ function MiniCap({ enrolled = 0, limit = 0, past, checkedIn = 0 }) {
   )
 }
 
-function EventCard({ ev, kinds, onOpen, showCate, now, open }) {
-  const kind = eventKind(ev)
-  const token = colorToken(ev.colorIndex, ev.meetId)
+function EventCard({ ev, onOpen, now, open }) {
+  const token = courseToken(ev.colorIndex, ev.meetId)
   const color = token.solid
   const teachers = ev.teachers || []
   const past = isEnded(ev, now) && !isTodayEvent(ev, now)
@@ -801,7 +852,6 @@ function EventCard({ ev, kinds, onOpen, showCate, now, open }) {
       <div className="sched-ev-top">
         <strong>{ev.start}–{ev.end}</strong>
         <span>{displayTitle(ev.title)}</span>
-        {showCate && kind && kind !== '活動' && <em className="activity-badge">{kind}</em>}
         {today && isEnded(ev, now) && <em className="sched-ev-today">今天</em>}
       </div>
       <div className="sched-ev-bot">
@@ -811,7 +861,7 @@ function EventCard({ ev, kinds, onOpen, showCate, now, open }) {
             <span>{t.USER_NAME}</span>
           </span>
         )) : (
-          <span className="sched-unassigned">未指派教師</span>
+          <span className="sched-ev-teacher">未指派教師</span>
         )}
         <MiniCap enrolled={ev.enrolled} limit={ev.limit} past={isEnded(ev, now)} checkedIn={ev.checkedIn} />
         <span className="sched-ev-go">›</span>
@@ -917,7 +967,7 @@ function CalendarPane({ rich, anchor, setAnchor, collapsed, setCollapsed, events
   const dateStr = anchor.format('YYYY-MM-DD')
   const weekDays = Array.from({ length: 7 }, (_, i) => anchor.startOf('week').add(i, 'day'))
   const showMini = !rich && collapsed
-  const bundles = dayEvents
+  const bundles = groupBundles(dayEvents)
   const dayPast = dateStr < now.format('YYYY-MM-DD')
   return (
     <div className={`sched-cal${collapsed && !rich ? ' is-collapsed' : ''}${rich ? ' is-rich' : ''}`}>
@@ -943,7 +993,7 @@ function CalendarPane({ rich, anchor, setAnchor, collapsed, setCollapsed, events
         )}
       </div>
       <button type="button" className="sched-divider" onClick={() => { if (!rich) setCollapsed(v => !v) }}>
-        {anchor.format('YYYY/M/D')}（{DOW[anchor.day()]}）· {dayEvents.length} 堂課
+        {anchor.format('YYYY/M/D')}（{DOW[anchor.day()]}）· {bundles.length} 堂課
         {!rich && <span>{collapsed ? '▲' : '▼'}</span>}
       </button>
       <div className="sched-day-agenda">
@@ -953,7 +1003,7 @@ function CalendarPane({ rich, anchor, setAnchor, collapsed, setCollapsed, events
             {onCreate && !dayPast && <button type="button" className="sched-empty-add" onClick={() => onCreate({ day: dateStr })}>＋新增</button>}
           </div>
         ) : bundles.map((ev, i) => (
-          <EventCard key={eventKey(ev, i)} ev={ev} kinds={kinds} now={now} showCate onOpen={onOpen} open={openKey === slotKey(ev)} />
+          <EventCard key={eventKey(ev, i)} ev={ev} kinds={kinds} now={now} showCate onOpen={onOpen} open={isOpenCard(ev, openKey)} />
         ))}
       </div>
     </div>
@@ -968,7 +1018,7 @@ function MonthEvents({ month, selected, events, kinds, now, onSelect, onOpen, op
       {DOW.map(d => <div key={d} className="sched-month-head">{d}</div>)}
       {cells.map(d => {
         const dateStr = d.format('YYYY-MM-DD')
-        const dayEvents = events.filter(ev => ev.day === dateStr).sort((a, b) => String(a.start).localeCompare(String(b.start)))
+        const dayEvents = groupBundles(events.filter(ev => ev.day === dateStr).sort((a, b) => String(a.start).localeCompare(String(b.start))))
         const shown = dayEvents.slice(0, 3)
         const extra = dayEvents.length - shown.length
         const out = d.month() !== month.month()
@@ -988,7 +1038,7 @@ function MonthEvents({ month, selected, events, kinds, now, onSelect, onOpen, op
                   <button
                     key={eventKey(ev, i)}
                     type="button"
-                    className={`sched-month-chip${isEnded(ev, now) && !isTodayEvent(ev, now) ? ' is-past' : ''}${openKey === slotKey(ev) ? ' is-open' : ''}`}
+                    className={`sched-month-chip${isEnded(ev, now) && !isTodayEvent(ev, now) ? ' is-past' : ''}${isOpenCard(ev, openKey) ? ' is-open' : ''}`}
                     style={{ background: color.bg, color: color.text, '--bar': color.border, '--assigned-color': color.color, '--assigned-text': color.text }}
                     onClick={e => { e.stopPropagation(); onSelect(d); onOpen(ev, e.currentTarget) }}
                   >
@@ -1071,7 +1121,7 @@ function MonthDots({ month, selected, events, now, onSelect }) {
           >
             <span className={`sched-month-num${today ? ' today' : ''}`}>{d.date()}</span>
             <span className="sched-month-dots">
-              {shown.map(t => <i key={t.USER_ID} style={{ background: colorFor(t.USER_ID, t.USER_COLOR_INDEX) }} />)}
+              {shown.map(t => <i key={t.USER_ID} style={{ background: teacherColor(t.USER_ID, t.USER_COLOR_INDEX) }} />)}
               {extra > 0 && <em>+{extra}</em>}
             </span>
           </button>
@@ -1098,7 +1148,7 @@ function ActivityPane({ events, kinds, now, anchor, showCate, onOpen, openKey })
     [events, now, monthStart, monthEnd],
   )
   const liveGroups = useMemo(() => {
-    const groups = groupByDay(live)
+    const groups = groupByDay(live).map(g => ({ ...g, items: groupBundles(g.items) }))
     const todayStr = now.format('YYYY-MM-DD')
     if (anchor.isSame(now, 'month') && !groups.some(g => g.day === todayStr)) {
       return [{ day: todayStr, items: [] }, ...groups]
@@ -1106,7 +1156,7 @@ function ActivityPane({ events, kinds, now, anchor, showCate, onOpen, openKey })
     return groups
   }, [live, anchor, now])
   const endedGroups = useMemo(
-    () => groupByDay(ended).reverse(),
+    () => groupByDay(ended).map(g => ({ ...g, items: groupBundles(g.items) })).reverse(),
     [ended],
   )
 
@@ -1134,7 +1184,7 @@ function ActivityPane({ events, kinds, now, anchor, showCate, onOpen, openKey })
           {group.items.length === 0 ? (
             <p className="sched-empty">本日無課堂</p>
           ) : group.items.map((ev, i) => (
-            <EventCard key={eventKey(ev, i)} ev={ev} kinds={kinds} now={now} showCate={showCate} onOpen={onOpen} open={openKey === slotKey(ev)} />
+            <EventCard key={eventKey(ev, i)} ev={ev} kinds={kinds} now={now} showCate={showCate} onOpen={onOpen} open={isOpenCard(ev, openKey)} />
           ))}
         </section>
       ))}
@@ -1148,7 +1198,7 @@ function ActivityPane({ events, kinds, now, anchor, showCate, onOpen, openKey })
             <section key={group.day} id={`ended-${group.day}`} className="sched-agenda-group sched-ended-list">
               <h3 className="sched-agenda-sticky">{dayHead(group.day, group.items)}</h3>
               {group.items.map((ev, i) => (
-                <EventCard key={eventKey(ev, i)} ev={ev} kinds={kinds} now={now} showCate={showCate} onOpen={onOpen} open={openKey === slotKey(ev)} />
+                <EventCard key={eventKey(ev, i)} ev={ev} kinds={kinds} now={now} showCate={showCate} onOpen={onOpen} open={isOpenCard(ev, openKey)} />
               ))}
             </section>
           ))}

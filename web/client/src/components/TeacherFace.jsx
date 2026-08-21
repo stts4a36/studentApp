@@ -1,4 +1,4 @@
-import { colorToken, initials } from '../utils/color'
+import { teacherToken, courseToken, initials } from '../utils/color'
 
 export function SlotTeacher({ slot, size = 18, fallback = '未指定教師' }) {
   const name = slot?.teacherName || slot?.teacherUsername || ''
@@ -20,7 +20,7 @@ export function SlotTeacher({ slot, size = 18, fallback = '未指定教師' }) {
 }
 
 export function ActivityMark({ id, name, size = 40, className = '', colorIndex }) {
-  const token = colorToken(colorIndex, id || name)
+  const token = courseToken(colorIndex, id || name)
   const label = initials(name)
   return (
     <span
@@ -42,7 +42,7 @@ export function ActivityMark({ id, name, size = 40, className = '', colorIndex }
 }
 
 export default function TeacherFace({ src, name, size = 22, className = '', id, colorIndex }) {
-  const token = colorToken(colorIndex, id || name)
+  const token = teacherToken(colorIndex, id || name)
   const style = {
     width: size,
     height: size,

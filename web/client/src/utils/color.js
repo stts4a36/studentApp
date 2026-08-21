@@ -1,8 +1,16 @@
-export const PALETTE = [
+export const TEACHER_PALETTE = [
   '#7B68EE', '#5D5FEF', '#49CCF9', '#00B8A9',
   '#2EA52C', '#84CC16', '#FFC800', '#FF8A00',
   '#FD71AF', '#D64DD2', '#8B5CF6',
 ]
+
+export const COURSE_PALETTE = [
+  '#0AA6A4', '#DC8FB1', '#6CC4EC', '#FFE36A',
+  '#7C71D3', '#70DCC1', '#F3A18C', '#9890DA',
+  '#EFA0D4', '#94C9EE',
+]
+
+export const PALETTE = COURSE_PALETTE
 
 export const DANGER = '#FF5A5F'
 export const INK = '#292D34'
@@ -63,23 +71,23 @@ function ensureTextOnTint(solid) {
   return text
 }
 
-function hashIndex(id) {
+function hashIndex(id, pool) {
   const s = String(id || '')
   if (!s) return 0
   let hash = 0
   for (const ch of s) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
-  return hash % PALETTE.length
+  return hash % pool.length
 }
 
-export function paletteIndex(index, id) {
-  if (index == null || index === '') return hashIndex(id)
+export function paletteIndex(index, id, pool = COURSE_PALETTE) {
+  if (index == null || index === '') return hashIndex(id, pool)
   const n = Number(index)
-  if (Number.isFinite(n) && n >= 0) return Math.trunc(n) % PALETTE.length
-  return hashIndex(id)
+  if (Number.isFinite(n) && n >= 0) return Math.trunc(n) % pool.length
+  return hashIndex(id, pool)
 }
 
-export function colorToken(index, id) {
-  const solid = PALETTE[paletteIndex(index, id)]
+export function colorToken(index, id, pool = COURSE_PALETTE) {
+  const solid = pool[paletteIndex(index, id, pool)]
   const whiteOk = contrast(solid, '#FFFFFF') >= 4.5
   const inkOk = contrast(solid, INK) >= 4.5
   const avatar = whiteOk ? solid : inkOk ? solid : ensureWhiteOn(solid)
@@ -93,8 +101,20 @@ export function colorToken(index, id) {
   }
 }
 
+export function teacherToken(index, id) {
+  return colorToken(index, id, TEACHER_PALETTE)
+}
+
+export function courseToken(index, id) {
+  return colorToken(index, id, COURSE_PALETTE)
+}
+
 export function colorFor(id, index) {
-  return colorToken(index, id).solid
+  return courseToken(index, id).solid
+}
+
+export function teacherColor(id, index) {
+  return teacherToken(index, id).solid
 }
 
 export function initials(name) {
@@ -119,6 +139,6 @@ export function tint(color, pct = 12) {
 }
 
 export function activityColor(id, index) {
-  const t = colorToken(index, id)
+  const t = courseToken(index, id)
   return { color: t.solid, bg: t.bg, border: t.solid, text: t.text }
 }

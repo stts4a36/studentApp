@@ -139,6 +139,7 @@ export default function SlotPopover({
   const checkedIn = events.reduce((s, item) => s + (item.checkedIn || 0), 0)
   const waiting = events.reduce((s, item) => s + (item.waiting || 0), 0)
   const unassigned = slotTeachers.length === 0
+  const combined = events.length > 1
 
   const [mobile, setMobile] = useState(isMobile)
   const [editing, setEditing] = useState(false)
@@ -335,7 +336,7 @@ export default function SlotPopover({
     }
     if (!nextLimit || nextLimit < 1) { alert('上限至少為 1'); return }
     const maxSlot = Math.max(...events.map(item => item.enrolled || 0), 0)
-    if (nextLimit < maxSlot) {
+    if (!combined && nextLimit < maxSlot) {
       alert(`已有 ${maxSlot} 人報名，上限不可低於 ${maxSlot}`)
       return
     }
@@ -347,10 +348,10 @@ export default function SlotPopover({
     setSaving(true)
     try {
       for (const item of events) {
-        if (isAdmin && form.teacherId !== (item.teachers?.[0]?.USER_ID || '')) {
+        if (!combined && isAdmin && form.teacherId !== (item.teachers?.[0]?.USER_ID || '')) {
           await api.put(metaPath(item), { teacherId: form.teacherId })
         }
-        if (nextLimit !== item.limit) await api.put(metaPath(item), { limit: nextLimit })
+        if (!combined && nextLimit !== item.limit) await api.put(metaPath(item), { limit: nextLimit })
         if (timeChanged) {
           await onMove(item, {
             day: form.day,
@@ -407,11 +408,13 @@ export default function SlotPopover({
               <input type="time" value={form.end} onChange={e => setForm({ ...form, end: e.target.value })} />
             </label>
           </div>
+          {!combined && (
           <label className="sched-field">
             人數上限
             <input type="number" min={Math.max(1, enrolled)} value={form.limit} onChange={e => setForm({ ...form, limit: e.target.value })} />
           </label>
-          {isAdmin && (
+          )}
+          {isAdmin && !combined && (
             <label className="sched-field">
               教師
               <select value={form.teacherId} onChange={e => setForm({ ...form, teacherId: e.target.value })}>
@@ -447,14 +450,14 @@ export default function SlotPopover({
                   <span className="slot-pop-teacher-name">{t.USER_NAME}</span>
                 </span>
               ))}
-              {isAdmin && canEdit && (
+              {isAdmin && canEdit && !combined && (
                 <button type="button" className="slot-pop-mini" onClick={() => setAssignOpen(v => !v)}>更換</button>
               )}
             </div>
           ) : (
             <p className="sched-unassigned">未指派教師</p>
           )}
-          {isAdmin && canEdit && (unassigned || assignOpen) && (
+          {isAdmin && canEdit && !combined && (unassigned || assignOpen) && (
             <label className="sched-field">
               {unassigned ? '指派教師' : '更換教師'}
               <select defaultValue={slotTeachers[0]?.USER_ID || ''} onChange={e => { if (e.target.value) askAssign(e.target.value) }}>
