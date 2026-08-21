@@ -32,7 +32,7 @@ function MyProfile() {
     try {
       const res = await api.post('/user/avatar', fd)
       const next = res.data?.USER_AVATAR || res.USER_AVATAR
-      setAvatar(next ? `${next}?t=${Date.now()}` : '')
+      setAvatar(next ? (String(next).startsWith('data:') ? next : `${next}?t=${Date.now()}`) : '')
     } catch (err) {
       alert(err.msg || '頭像上傳失敗')
     }

@@ -5,7 +5,7 @@ import db from '../db.js'
 import { authWork, signUserToken, signWorkToken } from '../middleware.js'
 import { persistAcademic, refreshAcademic } from '../studentAcademic.js'
 import { findUserByLogin, isValidUsername, normalizeUsername, usernameTaken } from '../username.js'
-import { avatarPublicPath, avatarUpload } from '../avatar.js'
+import { avatarUpload, filePublicUrl } from '../avatar.js'
 
 const router = Router()
 
@@ -85,7 +85,7 @@ router.put('/profile', authWork, async (req, res) => {
 
 router.post('/avatar', authWork, avatarUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ msg: '請選擇圖片' })
-  const path = avatarPublicPath(req.file.filename)
+  const path = filePublicUrl(req.file)
   await db.prepare('UPDATE users SET USER_AVATAR = ?, USER_EDIT_TIME = ? WHERE USER_ID = ?').run(path, Date.now(), req.userId)
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.userId)
   delete user.USER_PASSWORD

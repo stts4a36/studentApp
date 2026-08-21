@@ -10,7 +10,7 @@ import { attachMeetPeople, attachMeetPeopleMany, attachSlotTeachers, refreshTeac
 import { assertSlotsFreeForMeet, findTeacherSlotConflict } from '../teacherConflict.js'
 import { buildSchedule } from '../schedule.js'
 import { attachPerms, normalizePerms } from '../meetPerms.js'
-import { avatarPublicPath, avatarUpload, coverPublicPath, coverUpload } from '../avatar.js'
+import { avatarUpload, coverUpload, filePublicUrl } from '../avatar.js'
 import { audit, notify, listLogs, promoteWaitlist, cancelWaitlistOnSlot, attachMeetStats } from '../ops.js'
 import { ensureTeacherColor, nextMeetColorIndex, nextUserColorIndex } from '../colorIndex.js'
 
@@ -141,7 +141,7 @@ router.put('/meet/:id', authAdmin, async (req, res) => {
 
 router.post('/meet/:id/cover', authAdmin, coverUpload.single('cover'), async (req, res) => {
   if (!req.file) return res.status(400).json({ msg: '請上傳封面圖' })
-  const path = coverPublicPath(req.file.filename)
+  const path = filePublicUrl(req.file, 'covers')
   await db.prepare('UPDATE meets SET MEET_COVER = ?, MEET_EDIT_TIME = ? WHERE MEET_ID = ?').run(path, Date.now(), req.params.id)
   res.json({ data: { MEET_COVER: path } })
 })
@@ -632,7 +632,7 @@ router.get('/users/:id/lesson-logs', authAdmin, async (req, res) => {
 
 router.post('/users/:id/avatar', authAdmin, avatarUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ msg: '請選擇圖片' })
-  const path = avatarPublicPath(req.file.filename)
+  const path = filePublicUrl(req.file)
   await db.prepare('UPDATE users SET USER_AVATAR = ?, USER_EDIT_TIME = ? WHERE USER_ID = ?').run(path, Date.now(), req.params.id)
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.params.id)
   if (user) delete user.USER_PASSWORD

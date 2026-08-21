@@ -7,8 +7,10 @@ import app, { ensureDB } from './app.js'
 import { uploadsRoot } from './avatar.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-mkdirSync(uploadsRoot, { recursive: true })
-app.use('/uploads', express.static(uploadsRoot))
+if (!process.env.VERCEL) {
+  mkdirSync(uploadsRoot, { recursive: true })
+  app.use('/uploads', express.static(uploadsRoot))
+}
 
 const distDir = join(__dirname, '../client/dist')
 if (existsSync(distDir)) {
