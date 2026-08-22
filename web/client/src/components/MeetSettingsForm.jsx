@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../utils/api'
 import GroupPerms from './GroupPerms'
+import ColorTickets from './ColorTickets'
 import './MeetHub.css'
 import { flashError } from './NoticeHost'
 
@@ -15,6 +16,7 @@ function snapshot(form) {
     MEET_JOIN_CUTOFF_HOURS: Number(form.MEET_JOIN_CUTOFF_HOURS ?? form.MEET_CUTOFF_HOURS ?? 24),
     MEET_CANCEL_HOURS: Number(form.MEET_CANCEL_HOURS ?? form.MEET_CUTOFF_HOURS ?? 24),
     MEET_DEFAULT_LIMIT: Number(form.MEET_DEFAULT_LIMIT ?? 5),
+    MEET_COLOR_INDEX: Number(form.MEET_COLOR_INDEX ?? 0),
     teacherView: form.teacherView,
     teacherEdit: form.teacherEdit,
     studentView: form.studentView,
@@ -46,6 +48,7 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
       MEET_JOIN_CUTOFF_HOURS: meet.MEET_JOIN_CUTOFF_HOURS ?? meet.MEET_CUTOFF_HOURS ?? 24,
       MEET_CANCEL_HOURS: meet.MEET_CANCEL_HOURS ?? meet.MEET_CUTOFF_HOURS ?? 24,
       MEET_DEFAULT_LIMIT: meet.MEET_DEFAULT_LIMIT || 5,
+      MEET_COLOR_INDEX: meet.MEET_COLOR_INDEX ?? 0,
       MEET_DESC: meet.MEET_DESC || '',
       MEET_COVER: meet.MEET_COVER || '',
       MEET_CANCEL_SET: meet.MEET_CANCEL_SET ? 1 : 0,
@@ -141,6 +144,15 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
           <div style={{ marginBottom: 16 }}>
             <label className="mh-label">標題</label>
             <input type="text" value={form.MEET_TITLE || ''} onChange={e => setForm({ ...form, MEET_TITLE: e.target.value })} required disabled={!canEdit} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="mh-label">色票</label>
+            <ColorTickets
+              value={form.MEET_COLOR_INDEX}
+              disabled={!canEdit}
+              onChange={i => setForm({ ...form, MEET_COLOR_INDEX: i })}
+            />
+            <p className="mh-help">日曆與學員報名列表會用此顏色標示活動。</p>
           </div>
           <div style={{ marginBottom: 16 }}>
             <label className="mh-label">活動描述</label>

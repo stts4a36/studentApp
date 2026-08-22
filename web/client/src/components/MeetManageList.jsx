@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import ActionMenu from './ActionMenu'
+import { courseToken } from '../utils/color'
 import './MeetHub.css'
 import { flashError } from './NoticeHost'
 
@@ -95,7 +96,10 @@ export default function MeetManageList({ mode }) {
             {filtered.map(item => (
               <tr key={item.MEET_ID} className={item.MEET_STATUS === 1 ? '' : 'ml-row is-off'} style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={{ padding: 12, fontSize: 14 }}>
-                  <button type="button" className="ml-title" onClick={() => open(item.MEET_ID, 'time')}>{item.MEET_TITLE}</button>
+                  <div className="ml-title-cell">
+                    <i className="ml-color" style={{ background: courseToken(item.MEET_COLOR_INDEX, item.MEET_ID).solid }} />
+                    <button type="button" className="ml-title" onClick={() => open(item.MEET_ID, 'time')}>{item.MEET_TITLE}</button>
+                  </div>
                 </td>
                 <td style={{ padding: 12, fontSize: 14, color: 'var(--text-secondary)' }}>{item.MEET_CATE_NAME || '—'}</td>
                 <td style={{ padding: 12, textAlign: 'center', fontSize: 14 }}>{item.upcomingSlotCount ?? 0}</td>

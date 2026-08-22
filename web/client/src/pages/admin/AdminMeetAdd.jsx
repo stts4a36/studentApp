@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
 import GroupPerms from '../../components/GroupPerms'
 import PageHeader from '../../components/PageHeader'
+import ColorTickets from '../../components/ColorTickets'
 import { flashError } from '../../components/NoticeHost'
 
 function AdminMeetAdd() {
-  const [form, setForm] = useState({ title: '', cateName: '', cancelSet: 1, teacherView: 1, teacherEdit: 1, studentView: 1, studentEdit: 1 })
+  const [form, setForm] = useState({ title: '', cateName: '', cancelSet: 1, teacherView: 1, teacherEdit: 1, studentView: 1, studentEdit: 1, colorIndex: 0 })
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -37,6 +38,10 @@ function AdminMeetAdd() {
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>標題</label>
             <input type="text" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--text-secondary)' }}>色票</label>
+            <ColorTickets value={form.colorIndex} onChange={i => setForm({ ...form, colorIndex: i })} />
           </div>
           <GroupPerms
             value={form}

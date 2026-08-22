@@ -209,7 +209,7 @@ function groupByDay(list) {
   }))
 }
 
-export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: viewProp, onViewChange }) {
+export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: viewProp, onViewChange, title }) {
   const [view, setView] = useState(viewProp || 'calendar')
   const [anchor, setAnchor] = useState(() => dayjs())
   const [teamSpan, setTeamSpan] = useState('day')

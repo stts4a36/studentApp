@@ -199,6 +199,27 @@
 }
 .mh-dot.is-on { background: #27ae60; }
 
+.color-tickets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.color-tickets button {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.color-tickets button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.color-tickets button.on {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent);
+}
+
 .mh-tabs {
   display: flex;
   gap: 4px;
@@ -253,6 +274,17 @@
   text-align: left;
 }
 .ml-title:hover { text-decoration: underline; }
+.ml-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ml-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
 .ml-row.is-off td { opacity: 0.55; }
 .ml-status {
   display: inline-flex;

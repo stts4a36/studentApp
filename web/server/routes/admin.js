@@ -100,15 +100,17 @@ router.get('/meet/:id', authAdmin, async (req, res) => {
 })
 
 router.post('/meet', authAdmin, async (req, res) => {
-  const { title, cateName, cancelSet } = req.body
+  const { title, cateName, cancelSet, colorIndex } = req.body
   const perms = normalizePerms(req.body)
   const meetId = uuidv4()
   const now = Date.now()
-  const colorIndex = await nextMeetColorIndex(db)
+  const meetColor = Number.isFinite(Number(colorIndex)) && Number(colorIndex) >= 0
+    ? Math.trunc(Number(colorIndex))
+    : await nextMeetColorIndex(db)
   await db.prepare(`INSERT INTO meets (MEET_ID, MEET_ADMIN_ID, MEET_TITLE, MEET_CATE_NAME, MEET_CANCEL_SET, MEET_STATUS, MEET_IS_PUBLIC, MEET_TEACHER_VIEW, MEET_TEACHER_EDIT, MEET_STUDENT_VIEW, MEET_STUDENT_EDIT, MEET_COLOR_INDEX, MEET_ADD_TIME, MEET_EDIT_TIME)
     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     meetId, req.adminId, title, cateName || '', cancelSet || 1,
-    perms.studentView, perms.teacherView, perms.teacherEdit, perms.studentView, perms.studentEdit, colorIndex, now, now,
+    perms.studentView, perms.teacherView, perms.teacherEdit, perms.studentView, perms.studentEdit, meetColor, now, now,
   )
   res.json({ data: { MEET_ID: meetId } })
 })
@@ -137,7 +139,7 @@ router.post('/meet/:id/copy', authAdmin, async (req, res) => {
 router.put('/meet/:id', authAdmin, async (req, res) => {
   const {
     MEET_TITLE, MEET_CATE_NAME, MEET_STATUS, MEET_CANCEL_SET, MEET_CUTOFF_HOURS,
-    MEET_JOIN_CUTOFF_HOURS, MEET_CANCEL_HOURS, MEET_DESC, MEET_DEFAULT_LIMIT,
+    MEET_JOIN_CUTOFF_HOURS, MEET_CANCEL_HOURS, MEET_DESC, MEET_DEFAULT_LIMIT, MEET_COLOR_INDEX,
   } = req.body
   const current = await db.prepare('SELECT * FROM meets WHERE MEET_ID = ?').get(req.params.id)
   if (!current) return res.status(404).json({ msg: '未找到' })
@@ -145,13 +147,17 @@ router.put('/meet/:id', authAdmin, async (req, res) => {
   const joinCut = Math.max(0, Number(MEET_JOIN_CUTOFF_HOURS ?? MEET_CUTOFF_HOURS ?? current.MEET_JOIN_CUTOFF_HOURS ?? current.MEET_CUTOFF_HOURS ?? 24) || 0)
   const cancelCut = Math.max(0, Number(MEET_CANCEL_HOURS ?? current.MEET_CANCEL_HOURS ?? current.MEET_CUTOFF_HOURS ?? 24) || 0)
   const defLimit = Math.max(1, Number(MEET_DEFAULT_LIMIT ?? current.MEET_DEFAULT_LIMIT ?? 5) || 5)
+  const colorRaw = MEET_COLOR_INDEX ?? req.body.colorIndex
+  const colorIndex = Number.isFinite(Number(colorRaw)) && Number(colorRaw) >= 0
+    ? Math.trunc(Number(colorRaw))
+    : (current.MEET_COLOR_INDEX ?? 0)
   await db.prepare(`UPDATE meets SET MEET_TITLE = ?, MEET_CATE_NAME = ?, MEET_STATUS = ?, MEET_CANCEL_SET = ?,
     MEET_IS_PUBLIC = ?, MEET_TEACHER_VIEW = ?, MEET_TEACHER_EDIT = ?, MEET_STUDENT_VIEW = ?, MEET_STUDENT_EDIT = ?,
-    MEET_CUTOFF_HOURS = ?, MEET_JOIN_CUTOFF_HOURS = ?, MEET_CANCEL_HOURS = ?, MEET_DESC = ?, MEET_DEFAULT_LIMIT = ?, MEET_EDIT_TIME = ?
+    MEET_CUTOFF_HOURS = ?, MEET_JOIN_CUTOFF_HOURS = ?, MEET_CANCEL_HOURS = ?, MEET_DESC = ?, MEET_DEFAULT_LIMIT = ?, MEET_COLOR_INDEX = ?, MEET_EDIT_TIME = ?
     WHERE MEET_ID = ?`)
     .run(MEET_TITLE, MEET_CATE_NAME || '', MEET_STATUS, MEET_CANCEL_SET ? 1 : 0,
       perms.studentView, perms.teacherView, perms.teacherEdit, perms.studentView, perms.studentEdit,
-      joinCut, joinCut, cancelCut, MEET_DESC ?? current.MEET_DESC ?? '', defLimit, Date.now(), req.params.id)
+      joinCut, joinCut, cancelCut, MEET_DESC ?? current.MEET_DESC ?? '', defLimit, colorIndex, Date.now(), req.params.id)
   if (Array.isArray(req.body.groupPrices)) {
     await saveMeetPrices(db, req.params.id, req.body.groupPrices)
   }

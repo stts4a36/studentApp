@@ -83,7 +83,7 @@ export default function AdminFeeGroups() {
 
   return (
     <div className="page-container">
-      <PageHeader title="收費群組" subtitle="學生報名依所屬群組扣 Credit" onBack={() => navigate(-1)} />
+      <PageHeader title="收費群組" subtitle="學生報名依所屬群組扣 Credit" />
       <div className="card" style={{ maxWidth: 560, marginBottom: 16 }}>
         <form onSubmit={add} style={{ display: 'flex', gap: 8 }}>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="新群組名稱，例如中四" required />

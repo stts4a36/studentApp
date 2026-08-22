@@ -123,12 +123,16 @@ router.put('/meet/:id', authWork, async (req, res) => {
   const meet = await getOwnedMeet(req, req.params.id)
   if (!meet) return res.status(404).json({ msg: '未找到' })
   if (denyIfReadOnly(meet, res)) return
-  const { MEET_TITLE, MEET_STATUS, MEET_CANCEL_SET, MEET_CATE_NAME, MEET_CUTOFF_HOURS, MEET_JOIN_CUTOFF_HOURS, MEET_CANCEL_HOURS, MEET_DESC, MEET_DEFAULT_LIMIT } = req.body
+  const { MEET_TITLE, MEET_STATUS, MEET_CANCEL_SET, MEET_CATE_NAME, MEET_CUTOFF_HOURS, MEET_JOIN_CUTOFF_HOURS, MEET_CANCEL_HOURS, MEET_DESC, MEET_DEFAULT_LIMIT, MEET_COLOR_INDEX } = req.body
   const joinCut = Math.max(0, Number(MEET_JOIN_CUTOFF_HOURS ?? MEET_CUTOFF_HOURS ?? meet.MEET_JOIN_CUTOFF_HOURS ?? meet.MEET_CUTOFF_HOURS ?? 24) || 0)
   const cancelCut = Math.max(0, Number(MEET_CANCEL_HOURS ?? meet.MEET_CANCEL_HOURS ?? meet.MEET_CUTOFF_HOURS ?? 24) || 0)
   const defLimit = Math.max(1, Number(MEET_DEFAULT_LIMIT ?? meet.MEET_DEFAULT_LIMIT ?? 5) || 5)
-  await db.prepare('UPDATE meets SET MEET_TITLE = ?, MEET_STATUS = ?, MEET_CANCEL_SET = ?, MEET_CATE_NAME = ?, MEET_CUTOFF_HOURS = ?, MEET_JOIN_CUTOFF_HOURS = ?, MEET_CANCEL_HOURS = ?, MEET_DESC = ?, MEET_DEFAULT_LIMIT = ?, MEET_EDIT_TIME = ? WHERE MEET_ID = ?')
-    .run(MEET_TITLE, MEET_STATUS, MEET_CANCEL_SET ? 1 : 0, MEET_CATE_NAME || '', joinCut, joinCut, cancelCut, MEET_DESC ?? meet.MEET_DESC ?? '', defLimit, Date.now(), req.params.id)
+  const colorRaw = MEET_COLOR_INDEX ?? req.body.colorIndex
+  const colorIndex = Number.isFinite(Number(colorRaw)) && Number(colorRaw) >= 0
+    ? Math.trunc(Number(colorRaw))
+    : (meet.MEET_COLOR_INDEX ?? 0)
+  await db.prepare('UPDATE meets SET MEET_TITLE = ?, MEET_STATUS = ?, MEET_CANCEL_SET = ?, MEET_CATE_NAME = ?, MEET_CUTOFF_HOURS = ?, MEET_JOIN_CUTOFF_HOURS = ?, MEET_CANCEL_HOURS = ?, MEET_DESC = ?, MEET_DEFAULT_LIMIT = ?, MEET_COLOR_INDEX = ?, MEET_EDIT_TIME = ? WHERE MEET_ID = ?')
+    .run(MEET_TITLE, MEET_STATUS, MEET_CANCEL_SET ? 1 : 0, MEET_CATE_NAME || '', joinCut, joinCut, cancelCut, MEET_DESC ?? meet.MEET_DESC ?? '', defLimit, colorIndex, Date.now(), req.params.id)
   if (Array.isArray(req.body.groupPrices)) {
     await saveMeetPrices(db, req.params.id, req.body.groupPrices)
   }
