@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { apiError } from '../utils/api'
 import AcademicFields from '../components/AcademicFields'
 import AvatarPicker from '../components/AvatarPicker'
+import { ContactFields, contactFromUser, emptyContact } from '../components/ContactFields'
+import { FormNotice } from '../components/NoticeHost'
+import PageHeader from '../components/PageHeader'
 
 function MyProfile() {
   const navigate = useNavigate()
@@ -10,7 +13,10 @@ function MyProfile() {
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState('')
   const [academic, setAcademic] = useState({ enrollYear: '', enrollGrade: '', currentGrade: '' })
+  const [contact, setContact] = useState(emptyContact())
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState('')
 
   useEffect(() => {
     api.get('/user/my').then(res => {
@@ -23,40 +29,47 @@ function MyProfile() {
         enrollGrade: data.USER_ENROLL_GRADE || '',
         currentGrade: data.USER_CURRENT_GRADE || '',
       })
-    }).catch(() => {})
+      setContact(contactFromUser(data))
+    }).catch(err => setError(apiError(err, '載入失敗')))
   }, [])
 
   const handleAvatar = async (file) => {
     const fd = new FormData()
     fd.append('file', file)
+    setError('')
+    setOk('')
     try {
       const res = await api.post('/user/avatar', fd)
       const next = res.data?.USER_AVATAR || res.USER_AVATAR
       setAvatar(next ? (String(next).startsWith('data:') ? next : `${next}?t=${Date.now()}`) : '')
+      setOk('頭像已更新')
     } catch (err) {
-      alert(err.msg || '頭像上傳失敗')
+      setError(apiError(err, '頭像上傳失敗'))
     }
   }
+
+  const isTeacher = Number(user?.USER_TYPE) === 2
 
   const handleSave = async (e) => {
     e.preventDefault()
     setSaving(true)
+    setError('')
+    setOk('')
     try {
-      await api.put('/user/profile', user?.USER_TYPE === 2 ? { name } : { name, ...academic })
-      alert('已儲存')
-      navigate('/my')
+      const payload = { name, phone: contact.phone, email: contact.email, ig: contact.ig }
+      if (isTeacher) payload.note = contact.note
+      await api.put('/user/profile', payload)
+      setOk('已儲存')
     } catch (err) {
-      alert(err.msg || '儲存失敗')
+      setError(apiError(err, '儲存失敗'))
     } finally {
       setSaving(false)
     }
   }
 
-  const isTeacher = user?.USER_TYPE === 2
-
   return (
     <div className="page-container">
-      <h2 className="section-title">個人資料</h2>
+      <PageHeader title="個人資料" onBack={() => navigate('/my')} />
       <div className="card card-animate" style={{ maxWidth: 480 }}>
         <form onSubmit={handleSave}>
           <div style={{ marginBottom: 16 }}>
@@ -68,7 +81,9 @@ function MyProfile() {
             <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>姓名</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} required />
           </div>
-          {!isTeacher && <AcademicFields value={academic} onChange={setAcademic} required />}
+          {!isTeacher && <AcademicFields value={academic} readOnly />}
+          <ContactFields value={contact} onChange={setContact} hideNote={!isTeacher} />
+          <FormNotice error={error} ok={ok} />
           <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={saving}>{saving ? '儲存中...' : '儲存'}</button>
         </form>
       </div>

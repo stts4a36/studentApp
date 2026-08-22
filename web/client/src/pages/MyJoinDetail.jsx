@@ -1,44 +1,55 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
-import api from '../utils/api'
+import { useParams, useNavigate } from 'react-router-dom'
+import api, { apiError } from '../utils/api'
+import { formatRange12 } from '../utils/days'
+import { FormNotice } from '../components/NoticeHost'
+import PageHeader from '../components/PageHeader'
 
 function MyJoinDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [join, setJoin] = useState(null)
   const [cancelling, setCancelling] = useState(false)
   const [changing, setChanging] = useState(false)
   const [slots, setSlots] = useState([])
   const [pick, setPick] = useState('')
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState('')
 
   const load = () => {
     api.get(`/meet/my-joins/${id}`).then(res => {
       setJoin(res.data)
       if (res.data?.JOIN_STATUS === 1) {
-        api.get(`/meet/${res.data.JOIN_MEET_ID}/days`).then(d => setSlots(d.data || []))
+        api.get(`/meet/${res.data.JOIN_MEET_ID}/days`).then(d => setSlots(d.data || [])).catch(() => setSlots([]))
       }
-    })
+    }).catch(err => setError(apiError(err, '載入失敗')))
   }
 
   useEffect(() => { load() }, [id])
 
   const handleCancel = async () => {
-    if (!confirm(`確定取消此預約？課時將退還。須於上課 ${join.cutoffHours ?? 24} 小時前操作。`)) return
+    if (!confirm(`確定取消此預約？Credit 將退還。須於上課 ${join.cutoffHours ?? 24} 小時前操作。`)) return
     setCancelling(true)
+    setError('')
+    setOk('')
     try {
       await api.post(`/meet/my-joins/${id}/cancel`)
       setJoin({ ...join, JOIN_STATUS: 10, canChange: false })
+      setOk('已取消預約，Credit 已退還')
     } catch (err) {
-      alert(err.msg || '取消失敗')
+      setError(apiError(err, '取消失敗'))
     } finally {
       setCancelling(false)
     }
   }
 
   const handleReschedule = async () => {
-    if (!pick) { alert('請選擇新時段'); return }
+    if (!pick) { setError('請選擇新時段'); return }
     const [day, timeMark] = pick.split('|')
     if (!confirm('確定更改至此時段？不會額外扣除課時。')) return
     setChanging(true)
+    setError('')
+    setOk('')
     try {
       const res = await api.post(`/meet/my-joins/${id}/reschedule`, { day, timeMark })
       setJoin({
@@ -50,9 +61,9 @@ function MyJoinDetail() {
       })
       setPick('')
       load()
-      alert('已更改課堂')
+      setOk('已更改課堂')
     } catch (err) {
-      alert(err.msg || '更改失敗')
+      setError(apiError(err, '更改失敗'))
     } finally {
       setChanging(false)
     }
@@ -61,17 +72,27 @@ function MyJoinDetail() {
   const handleLeaveWait = async () => {
     if (!confirm('確定退出候補？')) return
     setCancelling(true)
+    setError('')
+    setOk('')
     try {
       await api.post(`/meet/my-joins/${id}/leave-waitlist`)
       setJoin({ ...join, JOIN_STATUS: 10, canLeaveWait: false })
+      setOk('已退出候補')
     } catch (err) {
-      alert(err.msg || '退出失敗')
+      setError(apiError(err, '退出失敗'))
     } finally {
       setCancelling(false)
     }
   }
 
-  if (!join) return <div className="page-container"><p className="empty-state">載入中...</p></div>
+  if (!join) {
+    return (
+      <div className="page-container">
+        <PageHeader title="報名詳情" onBack={() => navigate('/my/joins')} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   const options = []
   for (const d of slots) {
@@ -81,17 +102,21 @@ function MyJoinDetail() {
       if (t.status !== 1 || full) continue
       const startMs = new Date(`${d.day}T${t.start}:00`).getTime()
       if (startMs <= Date.now()) continue
-      options.push({ day: d.day, mark: t.mark, label: `${d.day} ${t.start}-${t.end}${t.teacherName ? ` · ${t.teacherName}` : ''}` })
+      options.push({ day: d.day, mark: t.mark, label: `${d.day} ${formatRange12(t.start, t.end)}${t.teacherName ? ` · ${t.teacherName}` : ''}` })
     }
   }
 
   return (
     <div className="page-container">
+      <PageHeader title="報名詳情" onBack={() => navigate('/my/joins')} />
       <div className="card card-animate">
         <h2 style={{ fontSize: 20, marginBottom: 16 }}>{join.JOIN_MEET_TITLE}</h2>
         <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', padding: 14, marginBottom: 16 }}>
           <p style={{ marginBottom: 6, fontSize: 14 }}><span style={{ color: 'var(--text-muted)' }}>日期：</span><span style={{ color: 'var(--accent-gold)' }}>{join.JOIN_MEET_DAY}</span></p>
-          <p style={{ marginBottom: 6, fontSize: 14 }}><span style={{ color: 'var(--text-muted)' }}>時段：</span>{join.JOIN_MEET_TIME_START} - {join.JOIN_MEET_TIME_END}</p>
+          <p style={{ marginBottom: 6, fontSize: 14 }}><span style={{ color: 'var(--text-muted)' }}>時段：</span>{formatRange12(join.JOIN_MEET_TIME_START, join.JOIN_MEET_TIME_END)}</p>
+          {join.JOIN_CREDIT != null && Number(join.JOIN_CREDIT) > 0 && (
+            <p style={{ marginBottom: 6, fontSize: 14 }}><span style={{ color: 'var(--text-muted)' }}>報名價格：</span>{join.JOIN_CREDIT} Credit</p>
+          )}
           <p style={{ marginBottom: 6, fontSize: 14 }}><span style={{ color: 'var(--text-muted)' }}>核驗碼：</span><span style={{ fontWeight: 600, letterSpacing: '0.05em' }}>{join.JOIN_CODE}</span></p>
           <p style={{ fontSize: 14 }}>
             <span style={{ color: 'var(--text-muted)' }}>狀態：</span>
@@ -117,7 +142,7 @@ function MyJoinDetail() {
               <p className="empty-state">暫無其他可改時段</p>
             ) : (
               <>
-                <select value={pick} onChange={e => setPick(e.target.value)} style={{ marginBottom: 10 }}>
+                <select value={pick} onChange={e => { setPick(e.target.value); setError('') }} style={{ marginBottom: 10 }}>
                   <option value="">選擇新時段</option>
                   {options.map(o => <option key={`${o.day}|${o.mark}`} value={`${o.day}|${o.mark}`}>{o.label}</option>)}
                 </select>
@@ -128,6 +153,8 @@ function MyJoinDetail() {
             )}
           </div>
         )}
+
+        <FormNotice error={error} ok={ok} />
 
         {join.JOIN_STATUS === 1 && !join.canChange && (
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>距上課不足 {join.cutoffHours ?? 24} 小時，無法更改或取消。</p>
@@ -160,7 +187,7 @@ function MyJoinDetail() {
               fontWeight: 600, fontSize: 15, opacity: join.canChange ? 1 : 0.5,
             }}
           >
-            {cancelling ? '取消中...' : '取消預約並退還課時'}
+            {cancelling ? '取消中...' : '取消預約並退還 Credit'}
           </button>
         )}
       </div>

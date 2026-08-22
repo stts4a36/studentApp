@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../utils/api'
 import GroupPerms from './GroupPerms'
 import './MeetHub.css'
+import { flashError } from './NoticeHost'
 
 function snapshot(form) {
   if (!form) return ''
@@ -18,6 +19,7 @@ function snapshot(form) {
     teacherEdit: form.teacherEdit,
     studentView: form.studentView,
     studentEdit: form.studentEdit,
+    groupPrices: form.groupPrices || [],
   })
 }
 
@@ -47,11 +49,25 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
       MEET_DESC: meet.MEET_DESC || '',
       MEET_COVER: meet.MEET_COVER || '',
       MEET_CANCEL_SET: meet.MEET_CANCEL_SET ? 1 : 0,
+      groupPrices: meet.groupPrices || [],
     }
     setForm(next)
     saved.current = snapshot(next)
     setCateMode(meet.MEET_CATE_NAME && categories.includes(meet.MEET_CATE_NAME) ? 'pick' : (meet.MEET_CATE_NAME ? 'new' : 'pick'))
   }, [meet])
+
+  useEffect(() => {
+    const url = isAdmin ? '/admin/fee-groups' : '/work/fee-groups'
+    const extra = isAdmin ? { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } } : {}
+    api.get(url, extra).then(res => {
+      const rows = res.data || []
+      if (!rows.length) return
+      setForm(f => {
+        if (!f || (f.groupPrices || []).length) return f
+        return { ...f, groupPrices: rows.map(g => ({ GROUP_ID: g.GROUP_ID, GROUP_NAME: g.GROUP_NAME, PRICE: '' })) }
+      })
+    }).catch(() => {})
+  }, [meetId, isAdmin])
 
   const dirty = useMemo(() => form && snapshot(form) !== saved.current, [form])
 
@@ -74,13 +90,19 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!canEdit || !dirty) return
+    const prev = JSON.parse(saved.current || '{}').groupPrices || []
+    const next = form.groupPrices || []
+    const priceChanged = JSON.stringify(prev) !== JSON.stringify(next)
+    if (priceChanged && (meet.joinCount || 0) > 0) {
+      if (!confirm('已有學員報名。改價不會回溯已報名者當時扣除的 Credit。確定儲存？')) return
+    }
     setLoading(true)
     try {
       await api.put(path, form, auth)
       saved.current = snapshot(form)
       onSaved?.(form)
     } catch (err) {
-      alert(err.msg || '儲存失敗')
+      flashError(err, '儲存失敗')
     } finally {
       setLoading(false)
     }
@@ -96,7 +118,7 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
       const cover = res.data?.MEET_COVER || res.MEET_COVER
       setForm({ ...form, MEET_COVER: cover })
     } catch (err) {
-      alert(err.msg || '上傳封面失敗')
+      flashError(err, '上傳封面失敗')
     } finally {
       setUploading(false)
     }
@@ -108,7 +130,7 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
       await api.delete(`/admin/meet/${meetId}`, auth)
       onDeleted?.()
     } catch (err) {
-      alert(err.msg || '刪除失敗')
+      flashError(err, '刪除失敗')
     }
   }
 
@@ -143,6 +165,30 @@ export default function MeetSettingsForm({ mode, meetId, meet, categories = [], 
           )}
           {isAdmin && (
             <GroupPerms value={form} onChange={next => setForm({ ...form, ...next })} />
+          )}
+          {!!form.studentEdit && (form.groupPrices || []).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <label className="mh-label">各收費群組價格（Credit）</label>
+              <p className="mh-help">空白代表該群不能報名。改價不回溯已報名學員。</p>
+              {(form.groupPrices || []).map((g, i) => (
+                <div key={g.GROUP_ID} className="mh-suffix" style={{ marginTop: 8 }}>
+                  <span style={{ minWidth: 88 }}>{g.GROUP_NAME}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="不能報"
+                    value={g.PRICE === '' || g.PRICE == null ? '' : g.PRICE}
+                    disabled={!canEdit}
+                    onChange={e => {
+                      const groupPrices = [...form.groupPrices]
+                      groupPrices[i] = { ...g, PRICE: e.target.value === '' ? '' : Number(e.target.value) }
+                      setForm({ ...form, groupPrices })
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           )}
           <div style={{ marginBottom: 16 }}>
             <label className="mh-label">分類</label>

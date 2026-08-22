@@ -4,6 +4,8 @@ import api from '../utils/api'
 import SlotTimeModal from '../components/SlotTimeModal'
 import { SlotTeacher } from '../components/TeacherFace'
 import { groupDaysByDate } from '../utils/days'
+import { flash, flashError } from '../components/NoticeHost'
+import PageHeader from '../components/PageHeader'
 
 function MyCourse() {
   const navigate = useNavigate()
@@ -46,26 +48,34 @@ function MyCourse() {
   }
 
   const handleAddDay = async () => {
-    if (!newDay) { alert('請選擇日期'); return }
+    if (!newDay) { flash('error', '請選擇日期'); return }
     try {
       await api.post(`/work/meet/${meetId}/days`, { day: newDay, times: newTimes }, { headers })
       loadDays()
       setNewDay('')
-    } catch (err) { alert(err.msg || '新增失敗') }
+    } catch (err) { flashError(err, '新增失敗') }
   }
 
   const handleDeleteDay = async (dayId) => {
     if (!confirm('確定刪除整天所有時段？已有預約將自動取消並退還課時')) return
-    await api.delete(`/work/meet/${meetId}/days/${dayId}`, { headers })
-    loadDays()
-    loadJoins()
+    try {
+      await api.delete(`/work/meet/${meetId}/days/${dayId}`, { headers })
+      loadDays()
+      loadJoins()
+    } catch (err) {
+      flashError(err, '刪除失敗')
+    }
   }
 
   const handleDeleteSlot = async (dayId, mark) => {
     if (!confirm('確定刪除此時段？已有預約將自動取消並退還課時')) return
-    await api.delete(`/work/meet/${meetId}/days/${dayId}/slot/${mark}`, { headers })
-    loadDays()
-    loadJoins()
+    try {
+      await api.delete(`/work/meet/${meetId}/days/${dayId}/slot/${mark}`, { headers })
+      loadDays()
+      loadJoins()
+    } catch (err) {
+      flashError(err, '刪除失敗')
+    }
   }
 
   const handleSaveTime = async ({ day, start, end, studentAction }) => {
@@ -76,12 +86,12 @@ function MyCourse() {
       }, { headers })
       const moved = res.data?.moved || 0
       const refunded = res.data?.refunded || 0
-      alert(moved ? `已更改時間，並搬遷 ${moved} 位學生` : refunded ? `已更改時間，並退還 ${refunded} 位學生課時` : '已更改時間')
+      flash('ok', moved ? `已更改時間，並搬遷 ${moved} 位學生` : refunded ? `已更改時間，並退還 ${refunded} 位學生課時` : '已更改時間')
       setEditingTime(null)
       loadDays()
       loadJoins()
     } catch (err) {
-      alert(err.msg || '更改失敗')
+      flashError(err, '更改失敗')
     }
   }
 
@@ -93,12 +103,12 @@ function MyCourse() {
   const handleSaveLimit = async () => {
     if (!editingSlot) return
     const val = parseInt(editLimit)
-    if (isNaN(val) || val < 1) { alert('請輸入有效的數字（至少 1）'); return }
+    if (isNaN(val) || val < 1) { flash('error', '請輸入有效的數字（至少 1）'); return }
     try {
       await api.put(`/work/meet/${meetId}/days/${editingSlot.dayId}/slot/${editingSlot.mark}`, { limit: val }, { headers })
       setEditingSlot(null)
       loadDays()
-    } catch (err) { alert(err.msg || '修改失敗') }
+    } catch (err) { flashError(err, '修改失敗') }
   }
 
   const handleViewSlotJoins = async (day, mark, slotLabel) => {
@@ -106,21 +116,29 @@ function MyCourse() {
       const res = await api.get(`/work/meet/${meetId}/joins-by-slot?day=${day}&mark=${mark}`, { headers })
       setSlotJoins(res.data || [])
       setSlotJoinsInfo({ day, label: slotLabel })
-    } catch (err) { alert(err.msg || '載入失敗') }
+    } catch (err) { flashError(err, '載入失敗') }
   }
 
   const handleCheckin = async (joinId) => {
-    await api.post(`/work/joins/${joinId}/checkin`, {}, { headers })
-    setJoins(joins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
-    if (slotJoins) setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    try {
+      await api.post(`/work/joins/${joinId}/checkin`, {}, { headers })
+      setJoins(joins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+      if (slotJoins) setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    } catch (err) {
+      flashError(err, '核銷失敗')
+    }
   }
 
   const handleCancel = async (joinId) => {
     if (!confirm('確定取消？')) return
-    await api.post(`/work/joins/${joinId}/cancel`, {}, { headers })
-    setJoins(joins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
-    if (slotJoins) setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
-    loadDays()
+    try {
+      await api.post(`/work/joins/${joinId}/cancel`, {}, { headers })
+      setJoins(joins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+      if (slotJoins) setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+      loadDays()
+    } catch (err) {
+      flashError(err, '取消失敗')
+    }
   }
 
   const tabStyle = (active) => ({
@@ -130,14 +148,18 @@ function MyCourse() {
     fontWeight: active ? 600 : 400, cursor: 'pointer', fontSize: 14,
   })
 
-  if (!meet) return <div className="page-container"><p className="empty-state">載入中...</p></div>
+  if (!meet) {
+    return (
+      <div className="page-container">
+        <PageHeader title="課程管理" onBack={() => navigate(backTo)} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <button className="btn-link" onClick={() => navigate(backTo)}>← 返回</button>
-        <h2 style={{ fontSize: 20 }}>{meet.MEET_TITLE}</h2>
-      </div>
+      <PageHeader title={meet.MEET_TITLE || '課程管理'} onBack={() => navigate(backTo)} />
 
       <div style={{ borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
         <button style={tabStyle(tab === 'time')} onClick={() => setTab('time')}>時段管理</button>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
 import PageHeader from '../../components/PageHeader'
+import { flashError } from '../../components/NoticeHost'
 
 function WorkMeetEdit() {
   const { id } = useParams()
@@ -16,7 +17,7 @@ function WorkMeetEdit() {
       const meet = res.data?.MEET_ID ? res.data : (res.MEET_ID ? res : res.data)
       setForm(meet)
     }).catch(err => {
-      alert(err.msg || '沒有此活動的管理權')
+      flashError(err, '沒有此活動的管理權')
       navigate('/work/meet')
     })
   }, [id])
@@ -27,7 +28,7 @@ function WorkMeetEdit() {
     try {
       await api.put(`/work/meet/${id}`, form)
       navigate('/work/meet')
-    } catch (err) { alert(err.msg || '儲存失敗') }
+    } catch (err) { flashError(err, '儲存失敗') }
     finally { setLoading(false) }
   }
 

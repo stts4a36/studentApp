@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminNewsAdd() {
   const [form, setForm] = useState({ title: '', desc: '', content: '' })
@@ -13,13 +15,13 @@ function AdminNewsAdd() {
     try {
       await api.post('/admin/news', form, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
       navigate('/admin/news')
-    } catch (err) { alert(err.msg || '新增失敗') }
+    } catch (err) { flashError(err, '新增失敗') }
     finally { setLoading(false) }
   }
 
   return (
     <div className="page-container">
-      <h2 className="section-title">新增公告</h2>
+      <PageHeader title="新增公告" onBack={() => navigate('/admin/news')} />
       <div className="card card-animate" style={{ maxWidth: 600 }}>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>

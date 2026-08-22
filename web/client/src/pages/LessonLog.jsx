@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
+import PageHeader from '../components/PageHeader'
 
 function LessonLog() {
+  const navigate = useNavigate()
   const [list, setList] = useState([])
 
   useEffect(() => {
@@ -15,7 +18,7 @@ function LessonLog() {
 
   return (
     <div className="page-container">
-      <h2 className="section-title">課時變動記錄</h2>
+      <PageHeader title="Credit 記錄" onBack={() => navigate('/my')} />
       {list.map((item, i) => (
         <div key={item.LESSON_LOG_ID} className="card card-animate" style={{ animationDelay: `${i * 0.04}s` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -29,7 +32,7 @@ function LessonLog() {
             </span>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 6 }}>
-            {new Date(item.LESSON_LOG_ADD_TIME).toLocaleString()} · 餘{item.LESSON_LOG_NOW_CNT}課時
+            {new Date(item.LESSON_LOG_ADD_TIME).toLocaleString()} · 餘 {item.LESSON_LOG_NOW_CNT} Credit
           </p>
           {item.LESSON_LOG_DESC && <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>{item.LESSON_LOG_DESC}</p>}
         </div>

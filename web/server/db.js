@@ -219,13 +219,61 @@ export async function initDB() {
       DETAIL TEXT DEFAULT '',
       ADD_TIME INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS fee_groups (
+      GROUP_ID TEXT PRIMARY KEY,
+      GROUP_NAME TEXT NOT NULL,
+      GROUP_ORDER INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS meet_group_prices (
+      MEET_ID TEXT NOT NULL,
+      GROUP_ID TEXT NOT NULL,
+      PRICE REAL,
+      PRIMARY KEY (MEET_ID, GROUP_ID)
+    );
+
+    CREATE TABLE IF NOT EXISTS private_events (
+      EVENT_ID TEXT PRIMARY KEY,
+      OWNER_USER_ID TEXT DEFAULT '',
+      OWNER_ADMIN_ID TEXT DEFAULT '',
+      TITLE TEXT NOT NULL,
+      ALL_DAY INTEGER DEFAULT 0,
+      START_DAY TEXT NOT NULL,
+      START_TIME TEXT DEFAULT '',
+      END_DAY TEXT NOT NULL,
+      END_TIME TEXT DEFAULT '',
+      LOCATION TEXT DEFAULT '',
+      LINK TEXT DEFAULT '',
+      NOTE TEXT DEFAULT '',
+      REPEAT_RULE TEXT DEFAULT '',
+      MULTI_DAY INTEGER DEFAULT 0,
+      COLOR_INDEX INTEGER DEFAULT 0,
+      ADD_TIME INTEGER,
+      EDIT_TIME INTEGER
+    );
   `)
 
   const admin = await db.prepare('SELECT * FROM admins WHERE ADMIN_NAME = ?').get('admin')
   if (!admin) {
     const hash = bcrypt.hashSync('123456', 10)
-    await db.prepare('INSERT INTO admins (ADMIN_ID, ADMIN_NAME, ADMIN_PASSWORD, ADMIN_STATUS, ADMIN_ADD_TIME) VALUES (?, ?, ?, ?, ?)')
-      .run(uuidv4(), 'admin', hash, 1, Date.now())
+    await db.prepare('INSERT INTO admins (ADMIN_ID, ADMIN_NAME, ADMIN_PASSWORD, ADMIN_STATUS, ADMIN_TYPE, ADMIN_ADD_TIME) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(uuidv4(), 'admin', hash, 1, 1, Date.now())
+  } else {
+    await db.prepare('UPDATE admins SET ADMIN_TYPE = 1 WHERE ADMIN_NAME = ?').run('admin')
+  }
+
+  const groupSeeds = [
+    ['中四', 1],
+    ['中五', 2],
+    ['中六', 3],
+    ['大學生', 4],
+  ]
+  for (const [name, order] of groupSeeds) {
+    const exists = await db.prepare('SELECT GROUP_ID FROM fee_groups WHERE GROUP_NAME = ?').get(name)
+    if (!exists) {
+      await db.prepare('INSERT INTO fee_groups (GROUP_ID, GROUP_NAME, GROUP_ORDER) VALUES (?, ?, ?)').run(uuidv4(), name, order)
+    }
   }
 
   for (const sql of [
@@ -248,6 +296,13 @@ export async function initDB() {
     'ALTER TABLE meets ADD COLUMN MEET_DEFAULT_LIMIT INTEGER DEFAULT 5',
     'ALTER TABLE users ADD COLUMN USER_COLOR_INDEX INTEGER',
     'ALTER TABLE meets ADD COLUMN MEET_COLOR_INDEX INTEGER',
+    'ALTER TABLE users ADD COLUMN USER_GROUP_ID TEXT DEFAULT ""',
+    'ALTER TABLE joins ADD COLUMN JOIN_CREDIT REAL DEFAULT 1',
+    'ALTER TABLE admins ADD COLUMN ADMIN_TYPE INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN USER_PHONE TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_EMAIL TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_IG TEXT DEFAULT ""',
+    'ALTER TABLE users ADD COLUMN USER_NOTE TEXT DEFAULT ""',
   ]) {
     try { await getClient().execute(sql) } catch {}
   }
@@ -287,6 +342,8 @@ export async function initDB() {
     FROM meets
     WHERE MEET_TEACHER_ID IS NOT NULL AND MEET_TEACHER_ID != ''
   `)
+
+  try { await getClient().execute('UPDATE joins SET JOIN_CREDIT = 1 WHERE JOIN_CREDIT IS NULL') } catch {}
 
   await backfillColorIndexes(db)
 }

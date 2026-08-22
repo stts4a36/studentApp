@@ -9,7 +9,12 @@ import { attachMeetPeople, attachMeetPeopleMany, attachSlotTeachers, resolveTeac
 import { assertSlotsFreeForMeet } from '../teacherConflict.js'
 import { buildSchedule } from '../schedule.js'
 import { attachPerms, hasTeacherEdit, hasTeacherView } from '../meetPerms.js'
-import { audit, notify, listLogs, promoteWaitlist, cancelWaitlistOnSlot, attachMeetStats } from '../ops.js'
+import { audit, notify, promoteWaitlist, cancelWaitlistOnSlot, attachMeetStats } from '../ops.js'
+import { attachMeetPrices, deductCredit, enrollCostForUser, listFeeGroups, refundJoinCredit, saveMeetPrices } from '../credit.js'
+import {
+  canEditPrivate, createPrivateEvent, deletePrivateEvent, expandPrivateForRange, getPrivateEvent,
+  listPrivateRows, listPrivateWithOwners, updatePrivateEvent,
+} from '../privateEvents.js'
 
 const router = Router()
 
@@ -83,7 +88,14 @@ router.get('/schedule', authWork, async (req, res) => {
     start,
     end,
   })
+  const rows = await listPrivateRows(db, { ownerUserId: req.teacherId })
+  data.events = [...(data.events || []), ...await expandPrivateForRange(db, rows, start, end)]
+  data.canPrivate = true
   res.json({ data })
+})
+
+router.get('/fee-groups', authWork, async (_req, res) => {
+  res.json({ data: await listFeeGroups(db) })
 })
 
 // List teacher's courses
@@ -102,6 +114,7 @@ router.get('/meet/:id', authWork, async (req, res) => {
   meet.MEET_JOIN_FORMS = parseJSON(meet.MEET_JOIN_FORMS)
   await attachMeetPeople(db, meet)
   await attachMeetStats(db, [meet])
+  await attachMeetPrices(db, meet)
   res.json({ data: meet })
 })
 
@@ -116,6 +129,9 @@ router.put('/meet/:id', authWork, async (req, res) => {
   const defLimit = Math.max(1, Number(MEET_DEFAULT_LIMIT ?? meet.MEET_DEFAULT_LIMIT ?? 5) || 5)
   await db.prepare('UPDATE meets SET MEET_TITLE = ?, MEET_STATUS = ?, MEET_CANCEL_SET = ?, MEET_CATE_NAME = ?, MEET_CUTOFF_HOURS = ?, MEET_JOIN_CUTOFF_HOURS = ?, MEET_CANCEL_HOURS = ?, MEET_DESC = ?, MEET_DEFAULT_LIMIT = ?, MEET_EDIT_TIME = ? WHERE MEET_ID = ?')
     .run(MEET_TITLE, MEET_STATUS, MEET_CANCEL_SET ? 1 : 0, MEET_CATE_NAME || '', joinCut, joinCut, cancelCut, MEET_DESC ?? meet.MEET_DESC ?? '', defLimit, Date.now(), req.params.id)
+  if (Array.isArray(req.body.groupPrices)) {
+    await saveMeetPrices(db, req.params.id, req.body.groupPrices)
+  }
   res.json({ data: {} })
 })
 
@@ -130,11 +146,6 @@ router.get('/meet/:id/days', authWork, async (req, res) => {
     times: (r.times || []).filter(t => !t.teacherId || t.teacherId === req.teacherId),
   })).filter(r => (r.times || []).length)
   res.json({ data: mine })
-})
-
-router.get('/meet/:id/logs', authWork, async (req, res) => {
-  if (!await getOwnedMeet(req, req.params.id)) return res.status(404).json({ msg: '未找到' })
-  res.json({ data: await listLogs(db, req.params.id) })
 })
 
 router.get('/notices', authWork, async (req, res) => {
@@ -204,7 +215,7 @@ router.delete('/meet/:id/days/:dayId', authWork, async (req, res) => {
     const now = Date.now()
     for (const join of activeJoins) {
       await db.prepare('UPDATE joins SET JOIN_STATUS = 99, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?').run(now, join.JOIN_ID)
-      await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(join.JOIN_USER_ID)
+      await refundJoinCredit(db, join, '刪除整天退還 Credit')
     }
     await audit(db, { meetId: req.params.id, actor: req.teacherName || '教師', action: '刪除整天', detail: dayRow.day })
   }
@@ -296,11 +307,11 @@ router.delete('/meet/:id/days/:dayId/slot/:mark', authWork, async (req, res) => 
   const now = Date.now()
   for (const join of activeJoins) {
     await db.prepare('UPDATE joins SET JOIN_STATUS = 99, JOIN_REASON = ?, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?').run('時段已刪除', now, join.JOIN_ID)
-    await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(join.JOIN_USER_ID)
+    await refundJoinCredit(db, join, '時段已刪除退還 Credit')
     await notify(db, {
       userId: join.JOIN_USER_ID,
       title: '課堂已取消',
-      body: `${join.JOIN_MEET_TITLE || '活動'} ${dayRow.day} ${slot.start}–${slot.end} 時段已刪除，課時已退還。`,
+      body: `${join.JOIN_MEET_TITLE || '活動'} ${dayRow.day} ${slot.start}–${slot.end} 時段已刪除，Credit 已退還。`,
       meetId: req.params.id,
     })
   }
@@ -365,7 +376,7 @@ router.post('/joins/:id/cancel', authWork, async (req, res) => {
     if (ts && ts.stat) { ts.stat.succCnt = Math.max(0, (ts.stat.succCnt || 0) - 1) }
     await db.prepare('UPDATE days SET times = ? WHERE DAY_ID = ?').run(JSON.stringify(times), dayRow.DAY_ID)
   }
-  await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(join.JOIN_USER_ID)
+  await refundJoinCredit(db, join, '教師取消退還 Credit')
   await promoteWaitlist(db, join.JOIN_MEET_ID, join.JOIN_MEET_DAY, join.JOIN_MEET_TIME_MARK)
   res.json({ data: {} })
 })
@@ -398,21 +409,66 @@ router.post('/meet/:id/walkin', authWork, async (req, res) => {
   if (timeSlot.teacherId && timeSlot.teacherId !== req.teacherId) return res.status(403).json({ msg: '僅能補登自己的時段' })
   const existing = await db.prepare('SELECT JOIN_ID FROM joins WHERE JOIN_USER_ID = ? AND JOIN_MEET_ID = ? AND JOIN_MEET_DAY = ? AND JOIN_MEET_TIME_MARK = ? AND JOIN_STATUS IN (1, 2)').get(user.USER_ID, req.params.id, day, timeMark)
   if (existing) return res.status(400).json({ msg: '該學員已在此時段' })
-  if (user.USER_LESSON_TOTAL_CNT <= 0) return res.status(400).json({ msg: '該學員課時不足' })
+  const cost = await enrollCostForUser(db, user, req.params.id)
+  if (!cost.ok) return res.status(400).json({ msg: cost.msg })
   const full = timeSlot.isLimit && (timeSlot.stat?.succCnt || 0) >= timeSlot.limit
   if (full) return res.status(400).json({ msg: '該時段已約滿' })
   const joinId = uuidv4()
   const code = Math.random().toString(36).substring(2, 17).toUpperCase()
   const now = Date.now()
-  await db.prepare(`INSERT INTO joins (JOIN_ID, JOIN_USER_ID, JOIN_MEET_ID, JOIN_MEET_CATE_ID, JOIN_MEET_CATE_NAME, JOIN_MEET_TITLE, JOIN_MEET_DAY, JOIN_MEET_TIME_START, JOIN_MEET_TIME_END, JOIN_MEET_TIME_MARK, JOIN_CODE, JOIN_STATUS, JOIN_FORMS, JOIN_IS_ADMIN, JOIN_ADD_TIME, JOIN_EDIT_TIME)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '[]', 1, ?, ?)`).run(
-    joinId, user.USER_ID, req.params.id, meet.MEET_CATE_ID, meet.MEET_CATE_NAME, meet.MEET_TITLE, day, timeSlot.start, timeSlot.end, timeMark, code, now, now,
+  await db.prepare(`INSERT INTO joins (JOIN_ID, JOIN_USER_ID, JOIN_MEET_ID, JOIN_MEET_CATE_ID, JOIN_MEET_CATE_NAME, JOIN_MEET_TITLE, JOIN_MEET_DAY, JOIN_MEET_TIME_START, JOIN_MEET_TIME_END, JOIN_MEET_TIME_MARK, JOIN_CODE, JOIN_STATUS, JOIN_FORMS, JOIN_IS_ADMIN, JOIN_CREDIT, JOIN_ADD_TIME, JOIN_EDIT_TIME)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '[]', 1, ?, ?, ?)`)
+    .run(
+    joinId, user.USER_ID, req.params.id, meet.MEET_CATE_ID, meet.MEET_CATE_NAME, meet.MEET_TITLE, day, timeSlot.start, timeSlot.end, timeMark, code, cost.price, now, now,
   )
   if (!timeSlot.stat) timeSlot.stat = { succCnt: 0, cancelCnt: 0, adminCancelCnt: 0, waitCnt: 0 }
   timeSlot.stat.succCnt = (timeSlot.stat.succCnt || 0) + 1
   await db.prepare('UPDATE days SET times = ? WHERE DAY_ID = ?').run(JSON.stringify(times), dayRow.DAY_ID)
-  await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT - 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT + 1 WHERE USER_ID = ?').run(user.USER_ID)
-  res.json({ data: { joinId, code, USER_NAME: user.USER_NAME } })
+  await deductCredit(db, user.USER_ID, cost.price, { meetId: req.params.id, desc: '現場補登', type: 1 })
+  res.json({ data: { joinId, code, USER_NAME: user.USER_NAME, price: cost.price } })
+})
+
+router.get('/private-events', authWork, async (req, res) => {
+  const opts = { ownerUserId: req.teacherId }
+  if (String(req.query.source || '') === '1' || !req.query.start) {
+    res.json({ data: await listPrivateWithOwners(db, opts) })
+    return
+  }
+  const start = req.query.start || '0000-01-01'
+  const end = req.query.end || '9999-12-31'
+  const rows = await listPrivateRows(db, opts)
+  res.json({ data: await expandPrivateForRange(db, rows, start, end) })
+})
+
+router.post('/private-events', authWork, async (req, res) => {
+  try {
+    const row = await createPrivateEvent(db, req.body, { userId: req.teacherId })
+    res.json({ data: row })
+  } catch (err) {
+    res.status(err.status || 500).json({ msg: err.message })
+  }
+})
+
+router.put('/private-events/:id', authWork, async (req, res) => {
+  const row = await getPrivateEvent(db, req.params.id)
+  if (!row || !canEditPrivate(row, { teacherId: req.teacherId })) {
+    return res.status(404).json({ msg: '未找到' })
+  }
+  try {
+    const next = await updatePrivateEvent(db, req.params.id, req.body)
+    res.json({ data: next })
+  } catch (err) {
+    res.status(err.status || 500).json({ msg: err.message })
+  }
+})
+
+router.delete('/private-events/:id', authWork, async (req, res) => {
+  const row = await getPrivateEvent(db, req.params.id)
+  if (!row || !canEditPrivate(row, { teacherId: req.teacherId })) {
+    return res.status(404).json({ msg: '未找到' })
+  }
+  await deletePrivateEvent(db, req.params.id)
+  res.json({ data: {} })
 })
 
 export default router

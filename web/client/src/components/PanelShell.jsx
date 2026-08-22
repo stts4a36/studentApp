@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { LogoMark, IconMenu, IconClose } from './icons'
+import { LogoMark } from './icons'
 import './Layout.css'
 
 const STORAGE_KEY = 'panelSidebarCollapsed'
 
-export function NavGroup({ label, color, active, collapsed, onExpand, children }) {
+export function NavGroup({ label, color, icon, active, collapsed, onExpand, children }) {
   const [open, setOpen] = useState(active)
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function NavGroup({ label, color, active, collapsed, onExpand, children }
   return (
     <div className={`nav-group${active ? ' is-active' : ''}${open && !collapsed ? ' is-open' : ''}`}>
       <button type="button" className="nav-group-label" onClick={toggle} title={label}>
-        <span className="space-swatch" style={{ background: color }} />
+        <span className="space-swatch nav-icon-box" style={{ background: color }}>{icon}</span>
         <span className="nav-label nav-group-text">{label}</span>
         <span className="nav-group-caret" aria-hidden>▾</span>
       </button>
@@ -83,9 +83,17 @@ export default function PanelShell({ brandTitle, userLabel, onBrand, onLogout, n
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(v => !v)}
           >
-            {menuOpen ? <IconClose /> : <IconMenu />}
+            <span className="menu-trigger-bars" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
           </button>
           <div className="sidebar-top">
+            <div className="sidebar-brand" onClick={onBrand} title={brandTitle}>
+              <LogoMark />
+              <h1 className="logo">{brandTitle}</h1>
+            </div>
             <button
               type="button"
               className="sidebar-toggle"
@@ -94,15 +102,13 @@ export default function PanelShell({ brandTitle, userLabel, onBrand, onLogout, n
             >
               {collapsed ? '»' : '«'}
             </button>
-            <div className="sidebar-brand" onClick={onBrand} title={brandTitle}>
-              <LogoMark />
-              <h1 className="logo">{brandTitle}</h1>
-            </div>
           </div>
-          {typeof nav === 'function' ? nav({ collapsed: navCollapsed, expand }) : nav}
-          <div className="user-area">
-            <span className="username" title={userLabel}>{userLabel}</span>
-            <button type="button" onClick={onLogout} className="btn-link sidebar-logout" title="登出">登出</button>
+          <div className="sidebar-menu-panel">
+            {typeof nav === 'function' ? nav({ collapsed: navCollapsed, expand }) : nav}
+            <div className="user-area">
+              <span className="username" title={userLabel}>{userLabel}</span>
+              <button type="button" onClick={onLogout} className="btn-link sidebar-logout" title="登出">登出</button>
+            </div>
           </div>
         </div>
       </header>

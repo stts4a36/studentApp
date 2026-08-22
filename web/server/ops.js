@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { enrollCostForUser, deductCredit } from './credit.js'
 
 export function parseJSON(str, fallback = []) {
   try { return JSON.parse(str) } catch { return fallback }
@@ -31,10 +32,25 @@ export async function notify(db, { userId, title, body, meetId }) {
   ).run(uuidv4(), userId, title || '', body || '', meetId || '', Date.now())
 }
 
-export async function listLogs(db, meetId) {
+export async function listLogs(db, meetId, limit = 500) {
+  const n = Math.min(Math.max(Number(limit) || 500, 1), 2000)
+  if (meetId) {
+    return db.prepare(
+      `SELECT l.LOG_ID, l.MEET_ID, l.ACTOR_NAME, l.ACTION, l.DETAIL, l.ADD_TIME, m.MEET_TITLE
+       FROM meet_logs l
+       LEFT JOIN meets m ON m.MEET_ID = l.MEET_ID
+       WHERE l.MEET_ID = ?
+       ORDER BY l.ADD_TIME DESC
+       LIMIT ?`
+    ).all(meetId, n)
+  }
   return db.prepare(
-    'SELECT * FROM meet_logs WHERE MEET_ID = ? ORDER BY ADD_TIME DESC LIMIT 80'
-  ).all(meetId)
+    `SELECT l.LOG_ID, l.MEET_ID, l.ACTOR_NAME, l.ACTION, l.DETAIL, l.ADD_TIME, m.MEET_TITLE
+     FROM meet_logs l
+     LEFT JOIN meets m ON m.MEET_ID = l.MEET_ID
+     ORDER BY l.ADD_TIME DESC
+     LIMIT ?`
+  ).all(n)
 }
 
 async function bumpWaitCnt(db, meetId, day, mark, delta) {
@@ -55,11 +71,12 @@ export async function promoteWaitlist(db, meetId, day, mark) {
 
   for (const row of waiting) {
     const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(row.JOIN_USER_ID)
-    if (!user || user.USER_LESSON_TOTAL_CNT <= 0) continue
+    const cost = await enrollCostForUser(db, user, meetId)
+    if (!cost.ok) continue
 
     const now = Date.now()
-    await db.prepare('UPDATE joins SET JOIN_STATUS = 1, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?').run(now, row.JOIN_ID)
-    await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT - 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT + 1 WHERE USER_ID = ?').run(row.JOIN_USER_ID)
+    await db.prepare('UPDATE joins SET JOIN_STATUS = 1, JOIN_CREDIT = ?, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?').run(cost.price, now, row.JOIN_ID)
+    await deductCredit(db, row.JOIN_USER_ID, cost.price, { meetId, desc: '候補轉正', type: 1 })
 
     const dayRow = await db.prepare('SELECT * FROM days WHERE DAY_MEET_ID = ? AND day = ?').get(meetId, day)
     if (dayRow) {
@@ -77,7 +94,7 @@ export async function promoteWaitlist(db, meetId, day, mark) {
     await notify(db, {
       userId: row.JOIN_USER_ID,
       title: '候補轉正',
-      body: `${meet?.MEET_TITLE || '活動'} ${day} ${row.JOIN_MEET_TIME_START}–${row.JOIN_MEET_TIME_END} 已有空位，已為你完成報名並扣除 1 課時。`,
+      body: `${meet?.MEET_TITLE || '活動'} ${day} ${row.JOIN_MEET_TIME_START}–${row.JOIN_MEET_TIME_END} 已有空位，已為你完成報名並扣除 ${cost.price} Credit。`,
       meetId,
     })
     return row

@@ -6,10 +6,12 @@ import { LogoMark } from '../../components/icons'
 function WorkLogin() {
   const [form, setForm] = useState({ username: '', password: '' })
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setError('')
     setLoading(true)
     try {
       const res = await api.post('/work/login', form)
@@ -17,7 +19,7 @@ function WorkLogin() {
       localStorage.setItem('work', JSON.stringify(res.user))
       navigate('/work')
     } catch (err) {
-      alert(err.msg || '登入失敗')
+      setError(err.msg || err.message || '登入失敗')
     } finally {
       setLoading(false)
     }
@@ -44,11 +46,12 @@ function WorkLogin() {
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginBottom: 28 }}>教師或有管理權的學員</p>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 18 }}>
-            <input type="text" placeholder="帳號" value={form.username} onChange={e => setForm({...form, username: e.target.value})} autoComplete="username" required />
+            <input type="text" placeholder="帳號" value={form.username} onChange={e => { setForm({...form, username: e.target.value}); setError('') }} autoComplete="username" required />
           </div>
           <div style={{ marginBottom: 24 }}>
-            <input type="password" placeholder="密碼" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />
+            <input type="password" placeholder="密碼" value={form.password} onChange={e => { setForm({...form, password: e.target.value}); setError('') }} required />
           </div>
+          {error && <p className="auth-error" role="alert">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%' }}>
             {loading ? '登入中...' : '登入'}
           </button>

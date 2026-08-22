@@ -6,6 +6,8 @@ import { canChangeBeforeClass, classStartMs, hoursUntilClass } from '../slotTime
 import { attachMeetPeople, attachMeetPeopleMany, attachSlotTeachers, attachSlotTeachersMany } from '../meetPeople.js'
 import { attachPerms, hasStudentEdit, hasStudentView, hasTeacherView } from '../meetPerms.js'
 import { joinCutoffHours, cancelCutoffHours, promoteWaitlist } from '../ops.js'
+import { attachMeetPrices, deductCredit, enrollCostForUser, refundJoinCredit } from '../credit.js'
+import { buildSchedule } from '../schedule.js'
 
 const router = Router()
 
@@ -37,6 +39,47 @@ router.get('/list', async (req, res) => {
   const rows = await db.prepare('SELECT * FROM meets WHERE MEET_STATUS IN (1, 9) AND COALESCE(MEET_STUDENT_VIEW, MEET_IS_PUBLIC, 1) = 1 ORDER BY MEET_ORDER ASC, MEET_ADD_TIME DESC LIMIT ?').all(limit)
   rows.forEach(r => { r.MEET_JOIN_FORMS = parseJSON(r.MEET_JOIN_FORMS); attachPerms(r) })
   await attachMeetPeopleMany(db, rows)
+  tryDecodeAny(req)
+  let studentGroupId = ''
+  const joinedMeetIds = new Set()
+  if (req.userId) {
+    const u = await db.prepare('SELECT USER_GROUP_ID, USER_TYPE FROM users WHERE USER_ID = ?').get(req.userId)
+    if (u?.USER_TYPE === 1) studentGroupId = u.USER_GROUP_ID || ''
+    const joins = await db.prepare(
+      'SELECT JOIN_MEET_ID FROM joins WHERE JOIN_USER_ID = ? AND JOIN_STATUS IN (1, 2)'
+    ).all(req.userId)
+    for (const j of joins || []) joinedMeetIds.add(j.JOIN_MEET_ID)
+  }
+  const today = todayLocal()
+  const ids = rows.map(r => r.MEET_ID)
+  const nextByMeet = {}
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',')
+    const dayRows = await db.prepare(
+      `SELECT * FROM days WHERE DAY_MEET_ID IN (${placeholders}) AND day >= ? ORDER BY day ASC`
+    ).all(...ids, today)
+    for (const d of dayRows) {
+      if (nextByMeet[d.DAY_MEET_ID]) continue
+      const times = parseJSON(d.times).filter(t => t.start && t.end).sort((a, b) => String(a.start).localeCompare(String(b.start)))
+      const open = times.find(t => Number(t.status ?? 1) === 1) || times[0]
+      if (!open) continue
+      const enrolled = open.stat?.succCnt || 0
+      const limit = open.limit || 0
+      nextByMeet[d.DAY_MEET_ID] = {
+        day: d.day,
+        start: open.start,
+        end: open.end,
+        teacherName: open.teacherName || '',
+        full: limit > 0 && enrolled >= limit,
+      }
+    }
+  }
+  for (const r of rows) {
+    await attachMeetPrices(db, r, { studentGroupId })
+    r.joined = joinedMeetIds.has(r.MEET_ID)
+    r.nextSlot = nextByMeet[r.MEET_ID] || null
+    if (!req.adminId && !req.teacherId) r.groupPrices = undefined
+  }
   res.json({ data: rows })
 })
 
@@ -79,7 +122,13 @@ router.get('/by-day', async (req, res) => {
 
 // My joins list (MUST be before /:id)
 router.get('/my-joins', authUser, async (req, res) => {
-  const rows = await db.prepare('SELECT * FROM joins WHERE JOIN_USER_ID = ? ORDER BY JOIN_ADD_TIME DESC').all(req.userId)
+  const rows = await db.prepare(`
+    SELECT j.*, m.MEET_COLOR_INDEX
+    FROM joins j
+    LEFT JOIN meets m ON m.MEET_ID = j.JOIN_MEET_ID
+    WHERE j.JOIN_USER_ID = ?
+    ORDER BY j.JOIN_MEET_DAY ASC, j.JOIN_MEET_TIME_START ASC
+  `).all(req.userId)
   rows.forEach(r => { r.JOIN_FORMS = parseJSON(r.JOIN_FORMS) })
   res.json({ data: rows })
 })
@@ -114,6 +163,53 @@ router.post('/notices/:id/read', authUser, async (req, res) => {
   res.json({ data: {} })
 })
 
+router.get('/schedule', async (req, res) => {
+  const start = req.query.start || ''
+  const end = req.query.end || ''
+  const meets = await db.prepare(
+    'SELECT MEET_ID FROM meets WHERE MEET_STATUS IN (1, 9) AND COALESCE(MEET_STUDENT_VIEW, MEET_IS_PUBLIC, 1) = 1'
+  ).all()
+  const data = await buildSchedule(db, {
+    meetIds: meets.map(m => m.MEET_ID),
+    start,
+    end,
+  })
+  for (const ev of data.events || []) {
+    ev.students = []
+  }
+  data.members = (data.members || []).filter(m => Number(m.USER_TYPE) === 2)
+  tryDecodeAny(req)
+  let studentGroupId = ''
+  if (req.userId) {
+    const u = await db.prepare('SELECT USER_GROUP_ID, USER_TYPE FROM users WHERE USER_ID = ?').get(req.userId)
+    if (u?.USER_TYPE === 1) studentGroupId = u.USER_GROUP_ID || ''
+  }
+  for (const a of data.activities || []) {
+    const meet = { MEET_ID: a.MEET_ID, canEnroll: a.canEnroll === true }
+    await attachMeetPrices(db, meet, { studentGroupId })
+    a.myGroupPrice = meet.myGroupPrice
+    a.canEnrollForMe = meet.canEnrollForMe
+    a.groupPrices = undefined
+  }
+  const priceByMeet = Object.fromEntries((data.activities || []).map(a => [a.MEET_ID, a]))
+  const joined = new Set()
+  if (req.userId) {
+    const rows = await db.prepare(
+      'SELECT JOIN_MEET_ID, JOIN_MEET_DAY, JOIN_MEET_TIME_MARK FROM joins WHERE JOIN_USER_ID = ? AND JOIN_STATUS IN (1, 2)'
+    ).all(req.userId)
+    for (const j of rows || []) joined.add(`${j.JOIN_MEET_ID}|${j.JOIN_MEET_DAY}|${j.JOIN_MEET_TIME_MARK}`)
+  }
+  for (const ev of data.events || []) {
+    const a = priceByMeet[ev.meetId] || {}
+    ev.myGroupPrice = a.myGroupPrice
+    ev.canEnrollForMe = a.canEnrollForMe === true
+    ev.joined = joined.has(`${ev.meetId}|${ev.day}|${ev.mark}`)
+  }
+  data.canPrivate = false
+  data.events = (data.events || []).filter(ev => !ev.private)
+  res.json({ data })
+})
+
 // Get meet detail (public) - wildcard MUST be last
 router.get('/:id', async (req, res) => {
   const meet = await db.prepare('SELECT * FROM meets WHERE MEET_ID = ?').get(req.params.id)
@@ -122,6 +218,23 @@ router.get('/:id', async (req, res) => {
   meet.MEET_JOIN_FORMS = parseJSON(meet.MEET_JOIN_FORMS)
   await attachMeetPeople(db, meet)
   attachPerms(meet)
+  tryDecodeAny(req)
+  let studentGroupId = ''
+  if (req.userId) {
+    const u = await db.prepare('SELECT USER_GROUP_ID, USER_TYPE FROM users WHERE USER_ID = ?').get(req.userId)
+    if (u?.USER_TYPE === 1) studentGroupId = u.USER_GROUP_ID || ''
+  }
+  await attachMeetPrices(db, meet, { studentGroupId })
+  meet.joined = false
+  if (req.userId) {
+    const mine = await db.prepare(
+      'SELECT JOIN_ID FROM joins WHERE JOIN_USER_ID = ? AND JOIN_MEET_ID = ? AND JOIN_STATUS IN (1, 2) LIMIT 1'
+    ).get(req.userId, meet.MEET_ID)
+    meet.joined = !!mine
+  }
+  if (!req.adminId && !req.teacherId) {
+    meet.groupPrices = (meet.groupPrices || []).filter(g => g.GROUP_ID === studentGroupId)
+  }
   res.json({ data: meet })
 })
 
@@ -167,37 +280,32 @@ router.post('/join', authUser, async (req, res) => {
   if (full && !waitlist) {
     return res.status(400).json({ msg: '該時段已約滿', code: 'FULL' })
   }
-  if (!full && user.USER_LESSON_TOTAL_CNT <= 0) {
-    return res.status(400).json({ msg: '課時不足，請聯繫管理員充值' })
-  }
+  const cost = await enrollCostForUser(db, user, meetId, { requireBalance: !full })
+  if (!cost.ok) return res.status(400).json({ msg: cost.msg })
 
   const joinId = uuidv4()
   const code = Math.random().toString(36).substring(2, 17).toUpperCase()
   const now = Date.now()
   const status = full ? 2 : 1
+  const credit = status === 1 ? cost.price : 0
 
-  await db.prepare(`INSERT INTO joins (JOIN_ID, JOIN_USER_ID, JOIN_MEET_ID, JOIN_MEET_CATE_ID, JOIN_MEET_CATE_NAME, JOIN_MEET_TITLE, JOIN_MEET_DAY, JOIN_MEET_TIME_START, JOIN_MEET_TIME_END, JOIN_MEET_TIME_MARK, JOIN_CODE, JOIN_STATUS, JOIN_FORMS, JOIN_ADD_TIME, JOIN_EDIT_TIME)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(joinId, userId, meetId, meet.MEET_CATE_ID, meet.MEET_CATE_NAME, meet.MEET_TITLE, day, timeSlot.start, timeSlot.end, timeMark, code, status, JSON.stringify(forms || []), now, now)
+  await db.prepare(`INSERT INTO joins (JOIN_ID, JOIN_USER_ID, JOIN_MEET_ID, JOIN_MEET_CATE_ID, JOIN_MEET_CATE_NAME, JOIN_MEET_TITLE, JOIN_MEET_DAY, JOIN_MEET_TIME_START, JOIN_MEET_TIME_END, JOIN_MEET_TIME_MARK, JOIN_CODE, JOIN_STATUS, JOIN_FORMS, JOIN_CREDIT, JOIN_ADD_TIME, JOIN_EDIT_TIME)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(joinId, userId, meetId, meet.MEET_CATE_ID, meet.MEET_CATE_NAME, meet.MEET_TITLE, day, timeSlot.start, timeSlot.end, timeMark, code, status, JSON.stringify(forms || []), credit, now, now)
 
   if (!timeSlot.stat) timeSlot.stat = { succCnt: 0, cancelCnt: 0, adminCancelCnt: 0, waitCnt: 0 }
   if (full) {
     timeSlot.stat.waitCnt = (timeSlot.stat.waitCnt || 0) + 1
     await db.prepare('UPDATE days SET times = ? WHERE DAY_ID = ?').run(JSON.stringify(times), dayRow.DAY_ID)
-    return res.json({ data: { joinId, code, waitlist: true } })
+    return res.json({ data: { joinId, code, waitlist: true, price: cost.price } })
   }
 
   timeSlot.stat.succCnt = (timeSlot.stat.succCnt || 0) + 1
   await db.prepare('UPDATE days SET times = ? WHERE DAY_ID = ?').run(JSON.stringify(times), dayRow.DAY_ID)
 
-  await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT - 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT + 1 WHERE USER_ID = ?').run(userId)
+  await deductCredit(db, userId, cost.price, { meetId, desc: '報名扣 Credit', type: 1 })
 
-  const logId = uuidv4()
-  await db.prepare(`INSERT INTO lesson_logs (LESSON_LOG_ID, LESSON_LOG_USER_ID, LESSON_LOG_MEET_ID, LESSON_LOG_TYPE, LESSON_LOG_CHANGE_CNT, LESSON_LOG_LAST_CNT, LESSON_LOG_NOW_CNT, LESSON_LOG_ADD_TIME, LESSON_LOG_EDIT_TIME)
-    VALUES (?, ?, ?, 1, -1, ?, ?, ?, ?)`)
-    .run(logId, userId, meetId, user.USER_LESSON_TOTAL_CNT, user.USER_LESSON_TOTAL_CNT - 1, now, now)
-
-  res.json({ data: { joinId, code } })
+  res.json({ data: { joinId, code, price: cost.price } })
 })
 
 // Cancel my join
@@ -226,13 +334,7 @@ router.post('/my-joins/:id/cancel', authUser, async (req, res) => {
     }
   }
 
-  await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(req.userId)
-
-  const user = await db.prepare('SELECT USER_LESSON_TOTAL_CNT FROM users WHERE USER_ID = ?').get(req.userId)
-  const logId = uuidv4()
-  await db.prepare(`INSERT INTO lesson_logs (LESSON_LOG_ID, LESSON_LOG_USER_ID, LESSON_LOG_MEET_ID, LESSON_LOG_TYPE, LESSON_LOG_CHANGE_CNT, LESSON_LOG_LAST_CNT, LESSON_LOG_NOW_CNT, LESSON_LOG_ADD_TIME, LESSON_LOG_EDIT_TIME)
-    VALUES (?, ?, ?, 2, 1, ?, ?, ?, ?)`)
-    .run(logId, req.userId, join.JOIN_MEET_ID, user.USER_LESSON_TOTAL_CNT - 1, user.USER_LESSON_TOTAL_CNT, now, now)
+  await refundJoinCredit(db, join, '取消預約退還 Credit', 2)
 
   await promoteWaitlist(db, join.JOIN_MEET_ID, join.JOIN_MEET_DAY, join.JOIN_MEET_TIME_MARK)
   res.json({ data: {} })

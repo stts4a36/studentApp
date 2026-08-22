@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import api from '../utils/api'
 import TeacherFace from './TeacherFace'
 import './MeetHub.css'
+import { flash, flashError } from './NoticeHost'
 
 function statusMeta(item) {
   if (item.JOIN_STATUS === 1 && item.JOIN_IS_CHECKIN) return { text: '已核銷', cls: 'badge-info' }
@@ -128,14 +129,22 @@ export default function MeetJoinBoard({ mode, meetId, canEdit = true, title = ''
     const reason = window.prompt('取消原因（選填）', '')
     if (reason === null) return
     const p = isAdmin ? `/admin/joins/${joinId}/cancel` : `/work/joins/${joinId}/cancel`
-    await api.post(p, { reason }, auth)
-    setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+    try {
+      await api.post(p, { reason }, auth)
+      setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+    } catch (err) {
+      flashError(err, '取消失敗')
+    }
   }
 
   const handleCheckin = async (joinId) => {
     const p = isAdmin ? `/admin/joins/${joinId}/checkin` : `/work/joins/${joinId}/checkin`
-    await api.post(p, {}, auth)
-    setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    try {
+      await api.post(p, {}, auth)
+      setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    } catch (err) {
+      flashError(err, '核銷失敗')
+    }
   }
 
   const handleScan = async (e) => {
@@ -145,11 +154,11 @@ export default function MeetJoinBoard({ mode, meetId, canEdit = true, title = ''
     try {
       const res = await api.post(`${path}/checkin-code`, { code }, auth)
       const row = res.data || {}
-      alert(`已核銷 ${row.USER_NAME || code}`)
+      flash('ok', `已核銷 ${row.USER_NAME || code}`)
       setScan('')
       load()
     } catch (err) {
-      alert(err.msg || '核銷失敗')
+      flashError(err, '核銷失敗')
     }
   }
 
@@ -161,7 +170,7 @@ export default function MeetJoinBoard({ mode, meetId, canEdit = true, title = ''
       setWalkForm({ username: '', day: '', timeMark: '' })
       load()
     } catch (err) {
-      alert(err.msg || '補登失敗')
+      flashError(err, '補登失敗')
     }
   }
 

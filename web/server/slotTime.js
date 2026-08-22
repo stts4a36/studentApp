@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { assertSlotsFreeForMeet } from './teacherConflict.js'
 import { notify } from './ops.js'
+import { refundJoinCredit } from './credit.js'
 
 const HOURS_24 = 24 * 60 * 60 * 1000
 
@@ -50,18 +51,7 @@ async function refundJoin(db, join, reason) {
   await db.prepare('UPDATE joins SET JOIN_STATUS = 99, JOIN_REASON = ?, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?')
     .run(reason, now, join.JOIN_ID)
 
-  const user = await db.prepare('SELECT USER_LESSON_TOTAL_CNT, USER_LESSON_USED_CNT FROM users WHERE USER_ID = ?').get(join.JOIN_USER_ID)
-  if (user) {
-    const lastCnt = user.USER_LESSON_TOTAL_CNT
-    const newCnt = lastCnt + 1
-    const used = Math.max(0, (user.USER_LESSON_USED_CNT || 0) - 1)
-    await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = ?, USER_LESSON_USED_CNT = ? WHERE USER_ID = ?')
-      .run(newCnt, used, join.JOIN_USER_ID)
-    const logId = uuidv4()
-    await db.prepare(`INSERT INTO lesson_logs (LESSON_LOG_ID, LESSON_LOG_USER_ID, LESSON_LOG_MEET_ID, LESSON_LOG_DESC, LESSON_LOG_TYPE, LESSON_LOG_CHANGE_CNT, LESSON_LOG_LAST_CNT, LESSON_LOG_NOW_CNT, LESSON_LOG_ADD_TIME, LESSON_LOG_EDIT_TIME)
-      VALUES (?, ?, ?, ?, 12, 1, ?, ?, ?, ?)`)
-      .run(logId, join.JOIN_USER_ID, join.JOIN_MEET_ID, reason, lastCnt, newCnt, now, now)
-  }
+  await refundJoinCredit(db, join, reason || '退還 Credit')
 }
 
 export async function applySlotTimeChange(db, { meetId, dayId, mark, newDay, start, end, studentAction }) {

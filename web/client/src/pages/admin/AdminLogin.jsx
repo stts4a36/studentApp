@@ -6,10 +6,12 @@ import { LogoMark } from '../../components/icons'
 function AdminLogin() {
   const [form, setForm] = useState({ name: '', password: '' })
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setError('')
     setLoading(true)
     try {
       const res = await api.post('/admin/login', form)
@@ -17,7 +19,7 @@ function AdminLogin() {
       localStorage.setItem('admin', JSON.stringify(res.admin))
       navigate('/admin')
     } catch (err) {
-      alert(err.msg || '登入失敗')
+      setError(err.msg || err.message || '登入失敗')
     } finally {
       setLoading(false)
     }
@@ -49,11 +51,12 @@ function AdminLogin() {
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginBottom: 28 }}>管理員登入</p>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 18 }}>
-            <input type="text" placeholder="管理員名稱" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
+            <input type="text" placeholder="管理員名稱" value={form.name} onChange={e => { setForm({...form, name: e.target.value}); setError('') }} required />
           </div>
           <div style={{ marginBottom: 24 }}>
-            <input type="password" placeholder="密碼" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />
+            <input type="password" placeholder="密碼" value={form.password} onChange={e => { setForm({...form, password: e.target.value}); setError('') }} required />
           </div>
+          {error && <p className="auth-error" role="alert">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%' }}>
             {loading ? '登入中...' : '登入'}
           </button>

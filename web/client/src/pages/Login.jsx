@@ -8,10 +8,12 @@ function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setError('')
     setLoading(true)
     try {
       const res = await api.post('/user/login', { username, password })
@@ -22,7 +24,7 @@ function Login() {
       }
       navigate(res.user?.USER_TYPE === 2 ? '/work' : '/')
     } catch (err) {
-      alert(err.msg || '登入失敗')
+      setError(err.msg || err.message || '登入失敗')
     } finally {
       setLoading(false)
     }
@@ -74,7 +76,7 @@ function Login() {
               type="text"
               placeholder="帳號"
               value={username}
-              onChange={e => setUsername(e.target.value)}
+              onChange={e => { setUsername(e.target.value); setError('') }}
               autoComplete="username"
               required
             />
@@ -84,10 +86,11 @@ function Login() {
               type="password"
               placeholder="密碼"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={e => { setPassword(e.target.value); setError('') }}
               required
             />
           </div>
+          {error && <p className="auth-error" role="alert">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%' }}>
             {loading ? '登入中...' : '登入'}
           </button>

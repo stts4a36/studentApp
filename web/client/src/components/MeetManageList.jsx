@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import ActionMenu from './ActionMenu'
 import './MeetHub.css'
+import { flashError } from './NoticeHost'
 
 const STATUS_LABEL = {
   0: '未啟用',
@@ -45,8 +46,12 @@ export default function MeetManageList({ mode }) {
 
   const handleDelete = async (id) => {
     if (!confirm('確定刪除此活動？時段與報名也會一併刪除。')) return
-    await api.delete(`/admin/meet/${id}`, auth)
-    setList(list.filter(m => m.MEET_ID !== id))
+    try {
+      await api.delete(`/admin/meet/${id}`, auth)
+      setList(list.filter(m => m.MEET_ID !== id))
+    } catch (err) {
+      flashError(err, '刪除失敗')
+    }
   }
 
   const handleCopy = async (id) => {
@@ -56,7 +61,7 @@ export default function MeetManageList({ mode }) {
       load()
       if (nextId) open(nextId, 'settings')
     } catch (err) {
-      alert(err.msg || '複製失敗')
+      flashError(err, '複製失敗')
     }
   }
 
@@ -64,7 +69,7 @@ export default function MeetManageList({ mode }) {
     <div className="page-container">
       <div className="content-title-row">
         <span className="content-title-icon" />
-        <h1 className="content-title">活動管理</h1>
+        <h1 className="content-title">公司活動</h1>
         {isAdmin && <button className="btn-primary-sm" onClick={() => navigate(`${base}/add`)}>新增活動</button>}
       </div>
       <div className="ml-tools">

@@ -109,6 +109,10 @@ export function courseToken(index, id) {
   return colorToken(index, id, COURSE_PALETTE)
 }
 
+export function privateToken(index, id) {
+  return colorToken(index, id, TEACHER_PALETTE)
+}
+
 export function colorFor(id, index) {
   return courseToken(index, id).solid
 }

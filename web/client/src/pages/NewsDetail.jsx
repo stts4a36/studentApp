@@ -1,19 +1,29 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import api from '../utils/api'
+import PageHeader from '../components/PageHeader'
 
 function NewsDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [news, setNews] = useState(null)
 
   useEffect(() => {
     api.get(`/news/${id}`).then(res => setNews(res.data))
   }, [id])
 
-  if (!news) return <div className="page-container"><p className="empty-state">載入中...</p></div>
+  if (!news) {
+    return (
+      <div className="page-container">
+        <PageHeader title="通知詳情" onBack={() => navigate('/news')} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
+      <PageHeader title="通知詳情" onBack={() => navigate('/news')} />
       <div className="card card-animate">
         <h2 style={{ fontSize: 22, marginBottom: 10 }}>{news.NEWS_TITLE}</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>

@@ -4,17 +4,17 @@
   background: rgba(24, 28, 36, 0.28);
   z-index: 70;
 }
-.slot-pop-anchor {
-  position: fixed;
-  z-index: 71;
-  width: min(360px, calc(100vw - 24px));
-  max-width: 360px;
-  box-sizing: border-box;
-}
 .slot-pop-anchor:not(.is-sheet) {
+  position: fixed;
+  z-index: 72;
+  width: 320px;
   filter:
     drop-shadow(0 4px 6px rgba(0, 0, 0, 0.06))
     drop-shadow(0 12px 24px rgba(0, 0, 0, 0.12));
+}
+.slot-pop-anchor.is-form:not(.is-sheet) {
+  width: min(400px, calc(100vw - 24px));
+  max-width: 400px;
 }
 .slot-pop-anchor:not(.is-sheet):not(.is-ready) {
   opacity: 0;

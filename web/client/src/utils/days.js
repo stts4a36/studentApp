@@ -109,14 +109,55 @@ export function titleKind(title, cate) {
 }
 
 export function formatClock(timeStr) {
-  if (!timeStr) return ''
-  const [h, m] = String(timeStr).split(':')
-  const hh = Number(h)
-  if (Number.isNaN(hh)) return String(timeStr)
-  if (!m || m === '00') return String(hh)
-  return `${hh}:${m}`
+  return formatClock12(timeStr)
+}
+
+export function formatClock12(timeStr, opts = {}) {
+  if (timeStr == null || timeStr === '') return ''
+  let h
+  let m = 0
+  if (typeof timeStr === 'number') {
+    h = Math.floor(timeStr)
+    m = Math.round((timeStr - h) * 60)
+  } else {
+    const parts = String(timeStr).trim().split(':')
+    h = Number(parts[0])
+    m = Number(parts[1] || 0)
+  }
+  if (!Number.isFinite(h)) return String(timeStr)
+  h = ((Math.trunc(h) % 24) + 24) % 24
+  if (m === 60) {
+    h = (h + 1) % 24
+    m = 0
+  }
+  const period = h < 12 ? '上午' : '下午'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  const mm = String(Math.abs(m)).padStart(2, '0')
+  if (opts.compact && m === 0) return `${period}${h12}`
+  if (opts.compact) return `${period}${h12}:${mm}`
+  return `${period} ${h12}:${mm}`
+}
+
+export function formatRange12(start, end, sep = '–') {
+  if (!start && start !== 0 && !end && end !== 0) return ''
+  const a = formatClock12(start)
+  const b = formatClock12(end)
+  if (a && b) return `${a}${sep}${b}`
+  return a || b
 }
 
 export function hourLabel24(hour) {
-  return `${String(hour).padStart(2, '0')}:00`
+  return formatClock12(hour, { compact: true })
+}
+
+export function formatDateTime12(value) {
+  if (value == null || value === '') return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const da = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  return `${y}-${mo}-${da} ${formatClock12(`${h}:${m}`)}`
 }

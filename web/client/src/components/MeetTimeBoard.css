@@ -434,16 +434,6 @@
 }
 .mt-ended-list { margin-top: 10px; opacity: 0.78; }
 
-.mt-logs {
-  margin-top: 20px;
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-.mt-logs summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.mt-log-row { font-size: 12px; color: var(--text-muted); padding: 8px 0; border-bottom: 1px solid var(--border); }
-.mt-log-row strong { color: var(--text-secondary); font-weight: 600; }
-
 .mt-toast {
   position: fixed;
   left: 50%;

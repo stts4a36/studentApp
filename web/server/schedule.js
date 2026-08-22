@@ -1,4 +1,5 @@
 import { attachMeetPeopleMany } from './meetPeople.js'
+import { hasStudentEdit, hasTeacherEdit } from './meetPerms.js'
 
 function parseJSON(str, fallback = []) {
   try { return JSON.parse(str) } catch { return fallback }
@@ -168,6 +169,8 @@ export async function buildSchedule(db, { meetIds, start, end, extraMembers = []
     MEET_IS_PUBLIC: m.MEET_IS_PUBLIC,
     MEET_DEFAULT_LIMIT: m.MEET_DEFAULT_LIMIT || 5,
     MEET_COLOR_INDEX: m.MEET_COLOR_INDEX,
+    canTeacherEdit: hasTeacherEdit(m),
+    canEnroll: hasStudentEdit(m),
   }))
 
   return { members, activities, events }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import dayjs from 'dayjs'
 import api from '../utils/api'
 import PageHeader from './PageHeader'
@@ -8,6 +9,7 @@ import { SlotTeacher } from './TeacherFace'
 import { groupDaysByDate, WEEK_BTNS, WEEK_SHORT } from '../utils/days'
 import { pickMeetTitle } from '../utils/meet'
 import './MeetTimeBoard.css'
+import { flash, flashError } from './NoticeHost'
 
 const LAST_KEY = 'meetTimeLastSlots'
 const MAX_REPEAT_DAYS = 60
@@ -121,7 +123,6 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
   const [meetTitle, setMeetTitle] = useState(initialTitle || '')
   const [teachers, setTeachers] = useState([])
   const [days, setDays] = useState([])
-  const [logs, setLogs] = useState([])
   const [canEdit, setCanEdit] = useState(isAdmin)
   const [newDay, setNewDay] = useState(tomorrowStr)
   const [newDayEnd, setNewDayEnd] = useState('')
@@ -143,6 +144,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
   const [menuKey, setMenuKey] = useState('')
   const [savedMark, setSavedMark] = useState('')
   const [confirm, setConfirm] = useState(null)
+  const [formError, setFormError] = useState('')
   const [pastOpen, setPastOpen] = useState(false)
   const [futureOnly, setFutureOnly] = useState(true)
   const [picked, setPicked] = useState({})
@@ -154,9 +156,12 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
     setTimeout(() => setToast(''), 2200)
   }
 
+  const showNotice = (title, body) => setConfirm({ title, body })
+
+  const apiError = (err, fallback) => err?.msg || err?.message || fallback
+
   const loadDays = () => {
     api.get(`${meetPath}/days`, auth).then(res => setDays(res.data || [])).catch(() => setDays([]))
-    api.get(`${meetPath}/logs`, auth).then(res => setLogs(res.data || [])).catch(() => setLogs([]))
   }
 
   useEffect(() => {
@@ -166,7 +171,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       if (!isAdmin) setCanEdit((res.data || res).canTeacherEdit !== false)
     }).catch(err => {
       if (!isAdmin) {
-        alert(err.msg || '沒有此活動的管理權')
+        flashError(err, '沒有此活動的管理權')
         onBack?.()
       }
     })
@@ -237,6 +242,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
 
   const handleAdd = async () => {
     if (!formReady) return
+    setFormError('')
     try {
       for (const day of saveDates) {
         await api.post(`${meetPath}/days`, { day, times: newTimes }, auth)
@@ -254,7 +260,9 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       setRepeat(false)
       showToast(saveDates.length > 1 ? `已新增 ${saveDates.length} 天時段` : '已儲存日期')
     } catch (err) {
-      alert(err.msg || '新增失敗')
+      const msg = apiError(err, '新增失敗')
+      setFormError(msg)
+      showNotice('無法新增時段', msg)
     }
   }
 
@@ -269,7 +277,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
   const handleSaveLimit = async () => {
     if (!editingSlot) return
     const val = parseInt(editLimit, 10)
-    if (isNaN(val) || val < 1) { alert('請輸入有效的數字（至少 1）'); return }
+    if (isNaN(val) || val < 1) { flash('error', '請輸入有效的數字（至少 1）'); return }
     try {
       if (editingSlot.batch) {
         for (const item of editingSlot.items) {
@@ -283,7 +291,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       }
       setEditingSlot(null)
       loadDays()
-    } catch (err) { alert(err.msg || '修改失敗') }
+    } catch (err) { showNotice('無法修改', apiError(err, '修改失敗')) }
   }
 
   const handleAssignTeacher = async (dayId, mark, teacherId) => {
@@ -292,7 +300,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       setSavedMark(mark)
       setTimeout(() => setSavedMark(''), 1600)
       loadDays()
-    } catch (err) { alert(err.msg || '指定教師失敗') }
+    } catch (err) { showNotice('無法指定教師', apiError(err, '指定教師失敗')) }
   }
 
   const handleViewSlotJoins = async (day, mark, slotLabel) => {
@@ -301,21 +309,29 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       const res = await api.get(`${meetPath}/joins-by-slot?day=${day}&mark=${mark}`, auth)
       setSlotJoins(res.data || [])
       setSlotJoinsInfo({ day, label: slotLabel })
-    } catch (err) { alert(err.msg || '載入失敗') }
+    } catch (err) { flashError(err, '載入失敗') }
   }
 
   const handleCheckin = async (joinId) => {
     const path = isAdmin ? `/admin/joins/${joinId}/checkin` : `/work/joins/${joinId}/checkin`
-    await api.post(path, {}, auth)
-    setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    try {
+      await api.post(path, {}, auth)
+      setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    } catch (err) {
+      flashError(err, '核銷失敗')
+    }
   }
 
   const handleCancel = async (joinId) => {
     if (!window.confirm('確定取消此預約？')) return
     const path = isAdmin ? `/admin/joins/${joinId}/cancel` : `/work/joins/${joinId}/cancel`
-    await api.post(path, {}, auth)
-    setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
-    loadDays()
+    try {
+      await api.post(path, {}, auth)
+      setSlotJoins(slotJoins.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+      loadDays()
+    } catch (err) {
+      flashError(err, '取消失敗')
+    }
   }
 
   const handleSaveTime = async ({ day, start, end, studentAction }) => {
@@ -330,7 +346,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       setEditingTime(null)
       loadDays()
     } catch (err) {
-      alert(err.msg || '更改失敗')
+      showNotice('無法更改時間', apiError(err, '更改失敗'))
     }
   }
 
@@ -392,7 +408,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
       loadDays()
       showToast(`已複製到 ${copyPicks.length} 天`)
     } catch (err) {
-      alert(err.msg || '複製失敗')
+      showNotice('無法複製', apiError(err, '複製失敗'))
     }
   }
 
@@ -586,8 +602,14 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
             <h3>{confirm.title}</h3>
             <p>{confirm.body}</p>
             <div className="mt-modal-actions">
-              <button className="btn-primary" style={{ flex: 1, padding: '10px 0', background: 'var(--danger)' }} onClick={() => { confirm.onYes(); setConfirm(null) }}>確定刪除</button>
-              <button className="mt-ghost" style={{ flex: 1 }} onClick={() => setConfirm(null)}>取消</button>
+              {confirm.onYes ? (
+                <>
+                  <button className="btn-primary" style={{ flex: 1, padding: '10px 0', background: 'var(--danger)' }} onClick={() => { confirm.onYes(); setConfirm(null) }}>確定刪除</button>
+                  <button className="mt-ghost" style={{ flex: 1 }} onClick={() => setConfirm(null)}>取消</button>
+                </>
+              ) : (
+                <button className="btn-primary" style={{ flex: 1, padding: '10px 0' }} onClick={() => setConfirm(null)}>知道了</button>
+              )}
             </div>
           </div>
         </div>
@@ -664,6 +686,7 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
             </div>
           ))}
           {overlapMsg && <p className="mt-warn">{overlapMsg}</p>}
+          {formError && <p className="mt-warn">{formError}</p>}
           <button type="button" className="mt-add-slot" onClick={addTime}>+ 新增時段</button>
           {repeat && (
             <p className={`mt-preview${tooManyDays ? ' is-warn' : ''}`}>
@@ -691,6 +714,9 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
           <button type="button" className={`mt-toggle${futureOnly ? '' : ' is-on'}`} onClick={() => setFutureOnly(v => !v)}>
             {futureOnly ? `顯示過去日期${past.length ? `（${past.length}）` : ''}` : '隱藏過去日期'}
           </button>
+          {isAdmin && (
+            <Link className="btn-link" to={`/admin/logs?meetId=${encodeURIComponent(meetId)}`}>異動紀錄</Link>
+          )}
         </div>
       </div>
       {canEdit && pickedItems.length > 0 && (
@@ -742,20 +768,6 @@ export default function MeetTimeBoard({ mode, meetId, initialTitle, onBack, embe
         <button type="button" className="mt-ended-toggle" style={{ marginTop: 8 }} onClick={() => setFutureOnly(false)}>
           另有 {past.length} 天已結束，點此查看
         </button>
-      )}
-
-      {logs.length > 0 && (
-        <details className="mt-logs">
-          <summary>異動紀錄（{logs.length}）</summary>
-          {logs.map(row => (
-            <div key={row.LOG_ID} className="mt-log-row">
-              <strong>{row.ACTION}</strong>
-              {' · '}
-              {row.DETAIL}
-              <div>{row.ACTOR_NAME} · {dayjs(row.ADD_TIME).format('YYYY-MM-DD HH:mm')}</div>
-            </div>
-          ))}
-        </details>
       )}
 
       {toast && <div className="mt-toast">{toast}</div>}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminNewsList() {
   const [list, setList] = useState([])
@@ -13,8 +14,12 @@ function AdminNewsList() {
 
   const handleDelete = async (id) => {
     if (!confirm('確定刪除？')) return
-    await api.delete(`/admin/news/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-    setList(list.filter(n => n.NEWS_ID !== id))
+    try {
+      await api.delete(`/admin/news/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
+      setList(list.filter(n => n.NEWS_ID !== id))
+    } catch (err) {
+      flashError(err, '刪除失敗')
+    }
   }
 
   return (

@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
 import PageHeader from '../../components/PageHeader'
 import { pickMeetTitle } from '../../utils/meet'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminJoinList() {
   const { id } = useParams()
@@ -19,13 +20,21 @@ function AdminJoinList() {
 
   const handleCancel = async (joinId) => {
     if (!confirm('確定取消此預約？')) return
-    await api.post(`/admin/joins/${joinId}/cancel`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-    setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+    try {
+      await api.post(`/admin/joins/${joinId}/cancel`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
+      setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_STATUS: 99 } : j))
+    } catch (err) {
+      flashError(err, '取消失敗')
+    }
   }
 
   const handleCheckin = async (joinId) => {
-    await api.post(`/admin/joins/${joinId}/checkin`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-    setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    try {
+      await api.post(`/admin/joins/${joinId}/checkin`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
+      setList(list.map(j => j.JOIN_ID === joinId ? { ...j, JOIN_IS_CHECKIN: 1 } : j))
+    } catch (err) {
+      flashError(err, '核銷失敗')
+    }
   }
 
   return (

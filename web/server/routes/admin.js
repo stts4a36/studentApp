@@ -13,6 +13,11 @@ import { attachPerms, normalizePerms } from '../meetPerms.js'
 import { avatarUpload, coverUpload, filePublicUrl } from '../avatar.js'
 import { audit, notify, listLogs, promoteWaitlist, cancelWaitlistOnSlot, attachMeetStats } from '../ops.js'
 import { ensureTeacherColor, nextMeetColorIndex, nextUserColorIndex } from '../colorIndex.js'
+import { attachGroupName, attachMeetPrices, enrollCostForUser, deductCredit, listFeeGroups, refundJoinCredit, saveMeetPrices } from '../credit.js'
+import {
+  createPrivateEvent, deletePrivateEvent, expandPrivateForRange, getPrivateEvent,
+  canEditPrivate, isSuperAdmin, listPrivateRows, listPrivateWithOwners, loadAdmin, updatePrivateEvent,
+} from '../privateEvents.js'
 
 const router = Router()
 
@@ -35,7 +40,7 @@ router.post('/login', async (req, res) => {
 
   await db.prepare('UPDATE admins SET ADMIN_LOGIN_TIME = ? WHERE ADMIN_ID = ?').run(Date.now(), admin.ADMIN_ID)
   const token = signAdminToken(admin.ADMIN_ID)
-  res.json({ token, admin: { id: admin.ADMIN_ID, name: admin.ADMIN_NAME } })
+  res.json({ token, admin: { id: admin.ADMIN_ID, name: admin.ADMIN_NAME, type: admin.ADMIN_TYPE || 0 } })
 })
 
 // Admin home stats
@@ -44,7 +49,8 @@ router.get('/home', authAdmin, async (req, res) => {
   const meetCount = (await db.prepare('SELECT COUNT(*) as cnt FROM meets').get()).cnt
   const joinCount = (await db.prepare('SELECT COUNT(*) as cnt FROM joins').get()).cnt
   const newsCount = (await db.prepare('SELECT COUNT(*) as cnt FROM news').get()).cnt
-  res.json({ data: { userCount, meetCount, joinCount, newsCount } })
+  const admin = await db.prepare('SELECT ADMIN_TYPE FROM admins WHERE ADMIN_ID = ?').get(req.adminId)
+  res.json({ data: { userCount, meetCount, joinCount, newsCount, adminType: admin?.ADMIN_TYPE || 0 } })
 })
 
 router.get('/schedule', authAdmin, async (req, res) => {
@@ -60,6 +66,13 @@ router.get('/schedule', authAdmin, async (req, res) => {
     end,
     extraMembers,
   })
+  const admin = await loadAdmin(db, req.adminId)
+  const superAdmin = isSuperAdmin(admin)
+  const privateOpts = superAdmin ? { all: true } : { ownerAdminId: req.adminId }
+  const rows = await listPrivateRows(db, privateOpts)
+  data.events = [...(data.events || []), ...await expandPrivateForRange(db, rows, start, end)]
+  data.canPrivate = true
+  data.adminType = admin?.ADMIN_TYPE || 0
   res.json({ data })
 })
 
@@ -82,6 +95,7 @@ router.get('/meet/:id', authAdmin, async (req, res) => {
   await attachMeetPeople(db, meet)
   attachPerms(meet)
   await attachMeetStats(db, [meet])
+  await attachMeetPrices(db, meet)
   res.json({ data: meet })
 })
 
@@ -115,6 +129,8 @@ router.post('/meet/:id/copy', authAdmin, async (req, res) => {
   for (const p of people) {
     await db.prepare('INSERT OR IGNORE INTO meet_people (MEET_ID, USER_ID, ROLE) VALUES (?, ?, ?)').run(meetId, p.USER_ID, p.ROLE)
   }
+  const prices = await db.prepare('SELECT GROUP_ID, PRICE FROM meet_group_prices WHERE MEET_ID = ?').all(src.MEET_ID)
+  await saveMeetPrices(db, meetId, prices)
   res.json({ data: { MEET_ID: meetId } })
 })
 
@@ -136,6 +152,9 @@ router.put('/meet/:id', authAdmin, async (req, res) => {
     .run(MEET_TITLE, MEET_CATE_NAME || '', MEET_STATUS, MEET_CANCEL_SET ? 1 : 0,
       perms.studentView, perms.teacherView, perms.teacherEdit, perms.studentView, perms.studentEdit,
       joinCut, joinCut, cancelCut, MEET_DESC ?? current.MEET_DESC ?? '', defLimit, Date.now(), req.params.id)
+  if (Array.isArray(req.body.groupPrices)) {
+    await saveMeetPrices(db, req.params.id, req.body.groupPrices)
+  }
   res.json({ data: {} })
 })
 
@@ -151,6 +170,7 @@ router.delete('/meet/:id', authAdmin, async (req, res) => {
   await db.prepare('DELETE FROM days WHERE DAY_MEET_ID = ?').run(req.params.id)
   await db.prepare('DELETE FROM joins WHERE JOIN_MEET_ID = ?').run(req.params.id)
   await db.prepare('DELETE FROM meet_people WHERE MEET_ID = ?').run(req.params.id)
+  await db.prepare('DELETE FROM meet_group_prices WHERE MEET_ID = ?').run(req.params.id)
   res.json({ data: {} })
 })
 
@@ -160,6 +180,11 @@ router.get('/meet/:id/days', authAdmin, async (req, res) => {
   rows.forEach(r => { r.times = parseJSON(r.times) })
   await attachSlotTeachers(db, req.params.id, rows)
   res.json({ data: rows })
+})
+
+router.get('/logs', authAdmin, async (req, res) => {
+  const meetId = String(req.query.meetId || '').trim()
+  res.json({ data: await listLogs(db, meetId || null) })
 })
 
 router.get('/meet/:id/logs', authAdmin, async (req, res) => {
@@ -227,7 +252,7 @@ router.delete('/meet/days/:dayId', authAdmin, async (req, res) => {
     const now = Date.now()
     for (const join of activeJoins) {
       await db.prepare('UPDATE joins SET JOIN_STATUS = 99, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?').run(now, join.JOIN_ID)
-      await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(join.JOIN_USER_ID)
+      await refundJoinCredit(db, join, '刪除整天退還 Credit')
     }
     await audit(db, { meetId: dayRow.DAY_MEET_ID, actor: await adminActor(req), action: '刪除整天', detail: dayRow.day })
   }
@@ -354,11 +379,11 @@ router.delete('/meet/days/:dayId/slot/:mark', authAdmin, async (req, res) => {
   const now = Date.now()
   for (const join of activeJoins) {
     await db.prepare('UPDATE joins SET JOIN_STATUS = 99, JOIN_REASON = ?, JOIN_EDIT_TIME = ? WHERE JOIN_ID = ?').run('時段已刪除', now, join.JOIN_ID)
-    await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(join.JOIN_USER_ID)
+    await refundJoinCredit(db, join, '時段已刪除退還 Credit')
     await notify(db, {
       userId: join.JOIN_USER_ID,
       title: '課堂已取消',
-      body: `${join.JOIN_MEET_TITLE || '活動'} ${dayRow.day} ${slot.start}–${slot.end} 時段已刪除，課時已退還。`,
+      body: `${join.JOIN_MEET_TITLE || '活動'} ${dayRow.day} ${slot.start}–${slot.end} 時段已刪除，Credit 已退還。`,
       meetId: dayRow.DAY_MEET_ID,
     })
   }
@@ -404,8 +429,7 @@ router.post('/joins/:id/cancel', authAdmin, async (req, res) => {
     await db.prepare('UPDATE days SET times = ? WHERE DAY_ID = ?').run(JSON.stringify(times), dayRow.DAY_ID)
   }
 
-  // Restore lesson
-  await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT + 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT - 1 WHERE USER_ID = ?').run(join.JOIN_USER_ID)
+  await refundJoinCredit(db, join, reason || '管理員取消退還 Credit')
   await promoteWaitlist(db, join.JOIN_MEET_ID, join.JOIN_MEET_DAY, join.JOIN_MEET_TIME_MARK)
   res.json({ data: {} })
 })
@@ -438,21 +462,23 @@ router.post('/meet/:id/walkin', authAdmin, async (req, res) => {
   if (!timeSlot) return res.status(400).json({ msg: '時段不存在' })
   const existing = await db.prepare('SELECT JOIN_ID FROM joins WHERE JOIN_USER_ID = ? AND JOIN_MEET_ID = ? AND JOIN_MEET_DAY = ? AND JOIN_MEET_TIME_MARK = ? AND JOIN_STATUS IN (1, 2)').get(user.USER_ID, req.params.id, day, timeMark)
   if (existing) return res.status(400).json({ msg: '該學員已在此時段' })
-  if (user.USER_LESSON_TOTAL_CNT <= 0) return res.status(400).json({ msg: '該學員課時不足' })
+  const cost = await enrollCostForUser(db, user, req.params.id)
+  if (!cost.ok) return res.status(400).json({ msg: cost.msg })
   const full = timeSlot.isLimit && (timeSlot.stat?.succCnt || 0) >= timeSlot.limit
   if (full) return res.status(400).json({ msg: '該時段已約滿' })
   const joinId = uuidv4()
   const code = Math.random().toString(36).substring(2, 17).toUpperCase()
   const now = Date.now()
-  await db.prepare(`INSERT INTO joins (JOIN_ID, JOIN_USER_ID, JOIN_MEET_ID, JOIN_MEET_CATE_ID, JOIN_MEET_CATE_NAME, JOIN_MEET_TITLE, JOIN_MEET_DAY, JOIN_MEET_TIME_START, JOIN_MEET_TIME_END, JOIN_MEET_TIME_MARK, JOIN_CODE, JOIN_STATUS, JOIN_FORMS, JOIN_IS_ADMIN, JOIN_ADD_TIME, JOIN_EDIT_TIME)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '[]', 1, ?, ?)`).run(
-    joinId, user.USER_ID, req.params.id, meet.MEET_CATE_ID, meet.MEET_CATE_NAME, meet.MEET_TITLE, day, timeSlot.start, timeSlot.end, timeMark, code, now, now,
+  await db.prepare(`INSERT INTO joins (JOIN_ID, JOIN_USER_ID, JOIN_MEET_ID, JOIN_MEET_CATE_ID, JOIN_MEET_CATE_NAME, JOIN_MEET_TITLE, JOIN_MEET_DAY, JOIN_MEET_TIME_START, JOIN_MEET_TIME_END, JOIN_MEET_TIME_MARK, JOIN_CODE, JOIN_STATUS, JOIN_FORMS, JOIN_IS_ADMIN, JOIN_CREDIT, JOIN_ADD_TIME, JOIN_EDIT_TIME)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '[]', 1, ?, ?, ?)`)
+    .run(
+    joinId, user.USER_ID, req.params.id, meet.MEET_CATE_ID, meet.MEET_CATE_NAME, meet.MEET_TITLE, day, timeSlot.start, timeSlot.end, timeMark, code, cost.price, now, now,
   )
   if (!timeSlot.stat) timeSlot.stat = { succCnt: 0, cancelCnt: 0, adminCancelCnt: 0, waitCnt: 0 }
   timeSlot.stat.succCnt = (timeSlot.stat.succCnt || 0) + 1
   await db.prepare('UPDATE days SET times = ? WHERE DAY_ID = ?').run(JSON.stringify(times), dayRow.DAY_ID)
-  await db.prepare('UPDATE users SET USER_LESSON_TOTAL_CNT = USER_LESSON_TOTAL_CNT - 1, USER_LESSON_USED_CNT = USER_LESSON_USED_CNT + 1 WHERE USER_ID = ?').run(user.USER_ID)
-  res.json({ data: { joinId, code, USER_NAME: user.USER_NAME } })
+  await deductCredit(db, user.USER_ID, cost.price, { meetId: req.params.id, desc: '現場補登', type: 1 })
+  res.json({ data: { joinId, code, USER_NAME: user.USER_NAME, price: cost.price } })
 })
 
 // News CRUD
@@ -492,7 +518,7 @@ router.delete('/news/:id', authAdmin, async (req, res) => {
 
 // User management
 router.post('/users', authAdmin, async (req, res) => {
-  const { name, username, mobile, password, type, enrollYear, enrollGrade, currentGrade } = req.body
+  const { name, username, mobile, password, type, enrollYear, enrollGrade, currentGrade, groupId, phone, email, ig, note } = req.body
   const login = normalizeUsername(username || mobile)
   if (!name || !login || !password) return res.status(400).json({ msg: '請填寫完整資訊' })
   if (!isValidUsername(login)) return res.status(400).json({ msg: '帳號需為 3–32 字，不可含空白' })
@@ -501,9 +527,23 @@ router.post('/users', authAdmin, async (req, res) => {
   const userId = uuidv4()
   const now = Date.now()
   const role = type || 1
+  let group = ''
+  if (role === 1) {
+    if (!groupId) return res.status(400).json({ msg: '請選擇收費群組' })
+    const g = await db.prepare('SELECT GROUP_ID FROM fee_groups WHERE GROUP_ID = ?').get(groupId)
+    if (!g) return res.status(400).json({ msg: '收費群組不存在' })
+    group = groupId
+  }
   const colorIndex = role === 2 ? await nextUserColorIndex(db) : null
-  await db.prepare('INSERT INTO users (USER_ID, USER_NAME, USER_USERNAME, USER_PASSWORD, USER_TYPE, USER_STATUS, USER_COLOR_INDEX, USER_ADD_TIME, USER_EDIT_TIME) VALUES (?,?,?,?,?,1,?,?,?)')
-    .run(userId, name, login, hash, role, colorIndex, now, now)
+  await db.prepare(`INSERT INTO users (
+    USER_ID, USER_NAME, USER_USERNAME, USER_PASSWORD, USER_TYPE, USER_STATUS, USER_COLOR_INDEX, USER_GROUP_ID,
+    USER_PHONE, USER_EMAIL, USER_IG, USER_NOTE, USER_ADD_TIME, USER_EDIT_TIME
+  ) VALUES (?,?,?,?,?,1,?,?,?,?,?,?,?,?)`)
+    .run(
+      userId, name, login, hash, role, colorIndex, group,
+      String(phone || '').trim(), String(email || '').trim(), String(ig || '').trim().replace(/^@/, ''), String(note || '').trim(),
+      now, now,
+    )
   if (role === 1) {
     await persistAcademic(db, userId, { enrollYear, enrollGrade, currentGrade })
   }
@@ -515,6 +555,7 @@ router.get('/users', authAdmin, async (req, res) => {
   for (const r of rows) {
     delete r.USER_PASSWORD
     await refreshAcademic(db, r)
+    await attachGroupName(db, r)
   }
   res.json({ data: rows })
 })
@@ -523,6 +564,7 @@ router.get('/users/:id', authAdmin, async (req, res) => {
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.params.id)
   if (!user) return res.status(404).json({ msg: '用戶不存在' })
   await refreshAcademic(db, user)
+  await attachGroupName(db, user)
   delete user.USER_PASSWORD
   res.json({ data: user })
 })
@@ -558,7 +600,7 @@ router.post('/users/:id/type', authAdmin, async (req, res) => {
 
 // Update user profile (name, mobile, status)
 router.put('/users/:id', authAdmin, async (req, res) => {
-  const { name, username, mobile, status, enrollYear, enrollGrade, currentGrade } = req.body
+  const { name, username, mobile, status, enrollYear, enrollGrade, currentGrade, groupId, phone, email, ig, note } = req.body
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.params.id)
   if (!user) return res.status(404).json({ msg: '用戶不存在' })
   const login = normalizeUsername(username || mobile || user.USER_USERNAME)
@@ -566,8 +608,25 @@ router.put('/users/:id', authAdmin, async (req, res) => {
   if (login && await usernameTaken(db, login, req.params.id)) {
     return res.status(400).json({ msg: '該帳號已被其他用戶使用' })
   }
-  await db.prepare('UPDATE users SET USER_NAME = ?, USER_USERNAME = ?, USER_STATUS = ?, USER_EDIT_TIME = ? WHERE USER_ID = ?')
-    .run(name || user.USER_NAME, login || user.USER_USERNAME, status ?? user.USER_STATUS, Date.now(), req.params.id)
+  let group = user.USER_GROUP_ID || ''
+  if (Number(user.USER_TYPE) === 1 && groupId !== undefined) {
+    if (!groupId) return res.status(400).json({ msg: '請選擇收費群組' })
+    const g = await db.prepare('SELECT GROUP_ID FROM fee_groups WHERE GROUP_ID = ?').get(groupId)
+    if (!g) return res.status(400).json({ msg: '收費群組不存在' })
+    group = groupId
+  }
+  await db.prepare(`UPDATE users SET
+    USER_NAME = ?, USER_USERNAME = ?, USER_STATUS = ?, USER_GROUP_ID = ?,
+    USER_PHONE = ?, USER_EMAIL = ?, USER_IG = ?, USER_NOTE = ?, USER_EDIT_TIME = ?
+    WHERE USER_ID = ?`)
+    .run(
+      name || user.USER_NAME, login || user.USER_USERNAME, status ?? user.USER_STATUS, group,
+      phone !== undefined ? String(phone || '').trim() : (user.USER_PHONE || ''),
+      email !== undefined ? String(email || '').trim() : (user.USER_EMAIL || ''),
+      ig !== undefined ? String(ig || '').trim().replace(/^@/, '') : (user.USER_IG || ''),
+      note !== undefined ? String(note || '').trim() : (user.USER_NOTE || ''),
+      Date.now(), req.params.id,
+    )
   if (name && name !== user.USER_NAME) {
     await refreshTeacherLabelsForUser(db, req.params.id)
   }
@@ -648,6 +707,89 @@ router.get('/teachers', authAdmin, async (req, res) => {
 router.get('/students', authAdmin, async (req, res) => {
   const rows = await db.prepare('SELECT USER_ID, USER_NAME, USER_USERNAME FROM users WHERE USER_TYPE = 1 ORDER BY USER_NAME ASC').all()
   res.json({ data: rows })
+})
+
+router.get('/fee-groups', authAdmin, async (_req, res) => {
+  res.json({ data: await listFeeGroups(db) })
+})
+
+router.post('/fee-groups', authAdmin, async (req, res) => {
+  const name = String(req.body.name || req.body.GROUP_NAME || '').trim()
+  if (!name) return res.status(400).json({ msg: '請填寫群組名稱' })
+  const exists = await db.prepare('SELECT GROUP_ID FROM fee_groups WHERE GROUP_NAME = ?').get(name)
+  if (exists) return res.status(400).json({ msg: '已有同名群組' })
+  const max = await db.prepare('SELECT MAX(GROUP_ORDER) as n FROM fee_groups').get()
+  const id = uuidv4()
+  await db.prepare('INSERT INTO fee_groups (GROUP_ID, GROUP_NAME, GROUP_ORDER) VALUES (?, ?, ?)').run(id, name, (max?.n || 0) + 1)
+  res.json({ data: { GROUP_ID: id } })
+})
+
+router.put('/fee-groups/:id', authAdmin, async (req, res) => {
+  const row = await db.prepare('SELECT * FROM fee_groups WHERE GROUP_ID = ?').get(req.params.id)
+  if (!row) return res.status(404).json({ msg: '未找到' })
+  const name = String(req.body.name || req.body.GROUP_NAME || row.GROUP_NAME).trim()
+  if (!name) return res.status(400).json({ msg: '請填寫群組名稱' })
+  const dup = await db.prepare('SELECT GROUP_ID FROM fee_groups WHERE GROUP_NAME = ? AND GROUP_ID != ?').get(name, req.params.id)
+  if (dup) return res.status(400).json({ msg: '已有同名群組' })
+  const order = Number(req.body.order ?? req.body.GROUP_ORDER ?? row.GROUP_ORDER) || 0
+  await db.prepare('UPDATE fee_groups SET GROUP_NAME = ?, GROUP_ORDER = ? WHERE GROUP_ID = ?').run(name, order, req.params.id)
+  res.json({ data: {} })
+})
+
+router.delete('/fee-groups/:id', authAdmin, async (req, res) => {
+  const row = await db.prepare('SELECT * FROM fee_groups WHERE GROUP_ID = ?').get(req.params.id)
+  if (!row) return res.status(404).json({ msg: '未找到' })
+  await db.prepare('UPDATE users SET USER_GROUP_ID = ? WHERE USER_GROUP_ID = ?').run('', req.params.id)
+  await db.prepare('DELETE FROM meet_group_prices WHERE GROUP_ID = ?').run(req.params.id)
+  await db.prepare('DELETE FROM fee_groups WHERE GROUP_ID = ?').run(req.params.id)
+  res.json({ data: {} })
+})
+
+router.get('/private-events', authAdmin, async (req, res) => {
+  const admin = await loadAdmin(db, req.adminId)
+  const superAdmin = isSuperAdmin(admin)
+  const opts = superAdmin ? { all: true } : { ownerAdminId: req.adminId }
+  if (String(req.query.source || '') === '1' || !req.query.start) {
+    res.json({ data: await listPrivateWithOwners(db, opts) })
+    return
+  }
+  const rows = await listPrivateRows(db, opts)
+  const start = req.query.start || '0000-01-01'
+  const end = req.query.end || '9999-12-31'
+  res.json({ data: await expandPrivateForRange(db, rows, start, end) })
+})
+
+router.post('/private-events', authAdmin, async (req, res) => {
+  try {
+    const row = await createPrivateEvent(db, req.body, { adminId: req.adminId })
+    res.json({ data: row })
+  } catch (err) {
+    res.status(err.status || 500).json({ msg: err.message })
+  }
+})
+
+router.put('/private-events/:id', authAdmin, async (req, res) => {
+  const admin = await loadAdmin(db, req.adminId)
+  const row = await getPrivateEvent(db, req.params.id)
+  if (!row || !canEditPrivate(row, { adminId: req.adminId, superAdmin: isSuperAdmin(admin) })) {
+    return res.status(404).json({ msg: '未找到' })
+  }
+  try {
+    const next = await updatePrivateEvent(db, req.params.id, req.body)
+    res.json({ data: next })
+  } catch (err) {
+    res.status(err.status || 500).json({ msg: err.message })
+  }
+})
+
+router.delete('/private-events/:id', authAdmin, async (req, res) => {
+  const admin = await loadAdmin(db, req.adminId)
+  const row = await getPrivateEvent(db, req.params.id)
+  if (!row || !canEditPrivate(row, { adminId: req.adminId, superAdmin: isSuperAdmin(admin) })) {
+    return res.status(404).json({ msg: '未找到' })
+  }
+  await deletePrivateEvent(db, req.params.id)
+  res.json({ data: {} })
 })
 
 export default router

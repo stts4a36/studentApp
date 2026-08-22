@@ -5,6 +5,8 @@ import MeetTimeBoard from './MeetTimeBoard'
 import MeetSettingsForm from './MeetSettingsForm'
 import MeetJoinBoard from './MeetJoinBoard'
 import './MeetHub.css'
+import { flashError } from './NoticeHost'
+import PageHeader from './PageHeader'
 
 const TABS = [
   { id: 'settings', label: '基本設定' },
@@ -30,7 +32,6 @@ export default function MeetHub({ mode }) {
   const navigate = useNavigate()
   const isAdmin = mode === 'admin'
   const base = isAdmin ? '/admin/meet' : '/work/meet'
-  const listLabel = isAdmin ? '活動管理' : '我的活動'
   const path = isAdmin ? `/admin/meet/${id}` : `/work/meet/${id}`
   const auth = isAdmin ? { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } } : {}
   const [meet, setMeet] = useState(null)
@@ -43,7 +44,7 @@ export default function MeetHub({ mode }) {
       const row = res.data?.MEET_ID ? res.data : (res.MEET_ID ? res : res.data)
       setMeet(row)
     }).catch(err => {
-      alert(err.msg || '沒有此活動的管理權')
+      flashError(err, '沒有此活動的管理權')
       navigate(base)
     })
     const listPath = isAdmin ? '/admin/meet' : '/work/meets'
@@ -71,7 +72,7 @@ export default function MeetHub({ mode }) {
       await api.put(path, next, auth)
       setMeet(next)
     } catch (err) {
-      alert(err.msg || '更新狀態失敗')
+      flashError(err, '更新狀態失敗')
     }
   }
 
@@ -83,16 +84,10 @@ export default function MeetHub({ mode }) {
 
   return (
     <div className="page-container">
-      <nav className="mh-crumb">
-        <button type="button" onClick={() => go(base)}>{listLabel}</button>
-        <span>/</span>
-        <em>{meet?.MEET_TITLE || '活動詳情'}</em>
-      </nav>
-      <div className="mh-head">
-        <div className="mh-head-main">
-          <h1 className="mh-title">{meet?.MEET_TITLE || '活動詳情'}</h1>
-        </div>
-        {meet && (
+      <PageHeader
+        title={meet?.MEET_TITLE || '活動詳情'}
+        onBack={() => go(base)}
+        extra={meet ? (
           <label className="mh-status">
             <i className={`mh-dot${meet.MEET_STATUS === 1 ? ' is-on' : ''}`} />
             <select
@@ -104,8 +99,8 @@ export default function MeetHub({ mode }) {
               {STATUS_OPTS.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}
             </select>
           </label>
-        )}
-      </div>
+        ) : null}
+      />
       <div className="mh-tabs">
         {TABS.map(t => (
           <button

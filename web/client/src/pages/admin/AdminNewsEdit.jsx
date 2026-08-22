@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
+import PageHeader from '../../components/PageHeader'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminNewsEdit() {
   const { id } = useParams()
@@ -19,15 +21,22 @@ function AdminNewsEdit() {
     try {
       await api.put(`/admin/news/${id}`, form, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
       navigate('/admin/news')
-    } catch (err) { alert(err.msg || '儲存失敗') }
+    } catch (err) { flashError(err, '儲存失敗') }
     finally { setLoading(false) }
   }
 
-  if (!form) return <div className="page-container"><p className="empty-state">載入中...</p></div>
+  if (!form) {
+    return (
+      <div className="page-container">
+        <PageHeader title="編輯公告" onBack={() => navigate('/admin/news')} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
-      <h2 className="section-title">編輯公告</h2>
+      <PageHeader title="編輯公告" onBack={() => navigate('/admin/news')} />
       <div className="card card-animate" style={{ maxWidth: 600 }}>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>

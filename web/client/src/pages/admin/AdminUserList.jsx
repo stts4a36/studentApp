@@ -1,36 +1,47 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../../utils/api'
 import AcademicFields from '../../components/AcademicFields'
 import { CURRENT_GRADE_OPTIONS, schoolStatusClass } from '../../utils/studentAcademic'
 import TeacherFace from '../../components/TeacherFace'
+import { ContactFields, emptyContact } from '../../components/ContactFields'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminUserList({ userType = 1 }) {
   const isTeacher = userType === 2
+  const [searchParams] = useSearchParams()
   const [list, setList] = useState([])
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', username: '', password: '' })
+  const [form, setForm] = useState({ name: '', username: '', password: '', ...emptyContact() })
   const [academic, setAcademic] = useState({ enrollYear: '', enrollGrade: '', currentGrade: '' })
+  const [groups, setGroups] = useState([])
+  const [groupId, setGroupId] = useState('')
   const [adding, setAdding] = useState(false)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [schoolFilter, setSchoolFilter] = useState('all')
   const [gradeFilter, setGradeFilter] = useState('all')
+  const [groupFilter, setGroupFilter] = useState('all')
   const navigate = useNavigate()
 
   const loadUsers = () => {
     api.get('/admin/users', { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
       .then(res => setList((res.data || []).filter(u => Number(u.USER_TYPE) === userType)))
+    if (userType === 1) {
+      api.get('/admin/fee-groups').then(res => setGroups(res.data || [])).catch(() => setGroups([]))
+    }
   }
 
   useEffect(() => {
     setShowAdd(false)
-    setForm({ name: '', username: '', password: '' })
+    setForm({ name: '', username: '', password: '', ...emptyContact() })
     setAcademic({ enrollYear: '', enrollGrade: '', currentGrade: '' })
+    setGroupId('')
     setQuery('')
     setStatusFilter('all')
     setSchoolFilter('all')
     setGradeFilter('all')
+    setGroupFilter(!isTeacher && searchParams.get('ungrouped') === '1' ? 'none' : 'all')
     loadUsers()
   }, [userType])
 
@@ -41,13 +52,14 @@ function AdminUserList({ userType = 1 }) {
       await api.post('/admin/users', {
         ...form,
         type: userType,
-        ...(isTeacher ? {} : academic),
+        ...(isTeacher ? {} : { ...academic, groupId }),
       }, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
       setShowAdd(false)
-      setForm({ name: '', username: '', password: '' })
+      setForm({ name: '', username: '', password: '', ...emptyContact() })
       setAcademic({ enrollYear: '', enrollGrade: '', currentGrade: '' })
+      setGroupId('')
       loadUsers()
-    } catch (err) { alert(err.msg || '新增失敗') }
+    } catch (err) { flashError(err, '新增失敗') }
     finally { setAdding(false) }
   }
 
@@ -58,11 +70,13 @@ function AdminUserList({ userType = 1 }) {
       if (statusFilter === '0' && item.USER_STATUS === 1) return false
       if (!isTeacher && schoolFilter !== 'all' && (item.USER_SCHOOL_STATUS || '未設定') !== schoolFilter) return false
       if (!isTeacher && gradeFilter !== 'all' && (item.USER_CURRENT_GRADE || '') !== gradeFilter) return false
+      if (!isTeacher && groupFilter === 'none' && item.USER_GROUP_ID) return false
+      if (!isTeacher && groupFilter !== 'all' && groupFilter !== 'none' && item.USER_GROUP_ID !== groupFilter) return false
       if (!q) return true
-      const blob = `${item.USER_NAME || ''} ${item.USER_USERNAME || ''} ${item.USER_MOBILE || ''}`.toLowerCase()
+      const blob = `${item.USER_NAME || ''} ${item.USER_USERNAME || ''} ${item.USER_MOBILE || ''} ${item.USER_PHONE || ''} ${item.USER_EMAIL || ''} ${item.USER_IG || ''}`.toLowerCase()
       return blob.includes(q)
     })
-  }, [list, query, statusFilter, schoolFilter, gradeFilter, isTeacher])
+  }, [list, query, statusFilter, schoolFilter, gradeFilter, groupFilter, isTeacher])
 
   const title = isTeacher ? '教師管理' : '學員管理'
   const addLabel = isTeacher ? '新增教師' : '新增學員'
@@ -100,6 +114,11 @@ function AdminUserList({ userType = 1 }) {
               <option value="all">全部年級</option>
               {CURRENT_GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
+            <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
+              <option value="all">全部收費群組</option>
+              <option value="none">未指定群組</option>
+              {groups.map(g => <option key={g.GROUP_ID} value={g.GROUP_ID}>{g.GROUP_NAME}</option>)}
+            </select>
           </>
         )}
       </div>
@@ -112,10 +131,21 @@ function AdminUserList({ userType = 1 }) {
               <input type="text" placeholder="姓名" value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={{ flex: 1 }} required />
               <input type="text" placeholder="帳號" value={form.username} onChange={e => setForm({...form, username: e.target.value})} style={{ flex: 1 }} required />
             </div>
-            <div style={{ marginBottom: isTeacher ? 14 : 12 }}>
+            <div style={{ marginBottom: isTeacher ? 12 : 12 }}>
               <input type="password" placeholder="密碼" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />
             </div>
-            {!isTeacher && <AcademicFields value={academic} onChange={setAcademic} />}
+            <ContactFields value={form} onChange={setForm} />
+            {!isTeacher && (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <select value={groupId} onChange={e => setGroupId(e.target.value)} required>
+                    <option value="">選擇收費群組</option>
+                    {groups.map(g => <option key={g.GROUP_ID} value={g.GROUP_ID}>{g.GROUP_NAME}</option>)}
+                  </select>
+                </div>
+                <AcademicFields value={academic} onChange={setAcademic} />
+              </>
+            )}
             <button type="submit" disabled={adding} className="btn-primary-sm">{adding ? '新增中...' : '確認新增'}</button>
           </form>
         </div>
@@ -131,8 +161,9 @@ function AdminUserList({ userType = 1 }) {
               {!isTeacher && (
                 <>
                   <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>學籍</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>剩餘課時</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>已約課時</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>群組</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>剩餘 Credit</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>已用 Credit</th>
                 </>
               )}
               <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>狀態</th>
@@ -154,6 +185,7 @@ function AdminUserList({ userType = 1 }) {
                     <td style={{ padding: 12, textAlign: 'center' }}>
                       <span className={schoolStatusClass(item.USER_SCHOOL_STATUS)}>{item.USER_SCHOOL_STATUS || '未設定'}</span>
                     </td>
+                    <td style={{ padding: 12, textAlign: 'center', color: 'var(--text-secondary)' }}>{item.GROUP_NAME || '未設定'}</td>
                     <td style={{ padding: 12, textAlign: 'center', fontWeight: 600, color: 'var(--accent)' }}>{item.USER_LESSON_TOTAL_CNT}</td>
                     <td style={{ padding: 12, textAlign: 'center', color: 'var(--text-secondary)' }}>{item.USER_LESSON_USED_CNT}</td>
                   </>

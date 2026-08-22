@@ -4,10 +4,19 @@ import { v4 as uuidv4 } from 'uuid'
 import db from '../db.js'
 import { authWork, signUserToken, signWorkToken } from '../middleware.js'
 import { persistAcademic, refreshAcademic } from '../studentAcademic.js'
+import { attachGroupName } from '../credit.js'
 import { findUserByLogin, isValidUsername, normalizeUsername, usernameTaken } from '../username.js'
 import { avatarUpload, filePublicUrl } from '../avatar.js'
 
 const router = Router()
+
+function toClientUser(user) {
+  if (!user) return user
+  const out = { ...user }
+  delete out.USER_PASSWORD
+  if (Number(out.USER_TYPE) !== 2) delete out.USER_NOTE
+  return out
+}
 
 // Register
 router.post('/register', async (req, res) => {
@@ -28,9 +37,8 @@ router.post('/register', async (req, res) => {
   await persistAcademic(db, userId, { enrollYear, enrollGrade, currentGrade })
 
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(userId)
-  delete user.USER_PASSWORD
   const token = signUserToken(userId)
-  res.json({ token, user })
+  res.json({ token, user: toClientUser(user) })
 })
 
 // Login
@@ -46,9 +54,8 @@ router.post('/login', async (req, res) => {
     .run(Date.now(), user.USER_ID)
 
   await refreshAcademic(db, user)
-  delete user.USER_PASSWORD
   const token = signUserToken(user.USER_ID)
-  const result = { token, user }
+  const result = { token, user: toClientUser(user) }
   if (user.USER_TYPE === 2) {
     result.workToken = signWorkToken(user.USER_ID, user.USER_NAME)
   }
@@ -60,27 +67,29 @@ router.get('/my', authWork, async (req, res) => {
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.userId)
   if (!user) return res.status(404).json({ msg: '用戶不存在' })
   await refreshAcademic(db, user)
-  delete user.USER_PASSWORD
-  res.json({ data: user })
+  await attachGroupName(db, user)
+  res.json({ data: toClientUser(user) })
 })
 
 router.put('/profile', authWork, async (req, res) => {
-  const { name, enrollYear, enrollGrade, currentGrade } = req.body
+  const { name, phone, email, ig, note } = req.body
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.userId)
   if (!user) return res.status(404).json({ msg: '用戶不存在' })
-  if (name) {
-    await db.prepare('UPDATE users SET USER_NAME = ?, USER_EDIT_TIME = ? WHERE USER_ID = ?').run(name, Date.now(), req.userId)
-  }
-  if (user.USER_TYPE !== 2) {
-    await persistAcademic(db, req.userId, {
-      enrollYear: enrollYear ?? user.USER_ENROLL_YEAR,
-      enrollGrade: enrollGrade ?? user.USER_ENROLL_GRADE,
-      currentGrade: currentGrade ?? user.USER_CURRENT_GRADE,
-    })
-  }
+  const isTeacher = Number(user.USER_TYPE) === 2
+  await db.prepare(`UPDATE users SET
+    USER_NAME = ?, USER_PHONE = ?, USER_EMAIL = ?, USER_IG = ?, USER_NOTE = ?, USER_EDIT_TIME = ?
+    WHERE USER_ID = ?`)
+    .run(
+      name || user.USER_NAME,
+      phone !== undefined ? String(phone || '').trim() : (user.USER_PHONE || ''),
+      email !== undefined ? String(email || '').trim() : (user.USER_EMAIL || ''),
+      ig !== undefined ? String(ig || '').trim().replace(/^@/, '') : (user.USER_IG || ''),
+      isTeacher && note !== undefined ? String(note || '').trim() : (user.USER_NOTE || ''),
+      Date.now(),
+      req.userId,
+    )
   const updated = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.userId)
-  delete updated.USER_PASSWORD
-  res.json({ data: updated })
+  res.json({ data: toClientUser(updated) })
 })
 
 router.post('/avatar', authWork, avatarUpload.single('file'), async (req, res) => {
@@ -88,8 +97,7 @@ router.post('/avatar', authWork, avatarUpload.single('file'), async (req, res) =
   const path = filePublicUrl(req.file)
   await db.prepare('UPDATE users SET USER_AVATAR = ?, USER_EDIT_TIME = ? WHERE USER_ID = ?').run(path, Date.now(), req.userId)
   const user = await db.prepare('SELECT * FROM users WHERE USER_ID = ?').get(req.userId)
-  delete user.USER_PASSWORD
-  res.json({ data: user })
+  res.json({ data: toClientUser(user) })
 })
 
 export default router

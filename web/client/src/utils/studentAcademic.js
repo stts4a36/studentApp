@@ -34,3 +34,17 @@ export function schoolStatusClass(status) {
   if (status === '已退學') return 'badge-muted'
   return 'badge-muted'
 }
+
+export function currentGradeLabel(grade) {
+  if (grade === '畢業') return '已畢業'
+  if (grade === '退學') return '已退學'
+  if (!grade) return ''
+  return LADDER_GRADES.includes(grade) ? `現讀${grade}` : grade
+}
+
+export function enrollLabel(year, grade) {
+  const parts = []
+  if (year) parts.push(`${year} 年`)
+  if (grade) parts.push(grade)
+  return parts.join(' · ')
+}

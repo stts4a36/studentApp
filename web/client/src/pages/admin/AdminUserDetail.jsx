@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
 import AcademicFields from '../../components/AcademicFields'
-import { schoolStatusClass } from '../../utils/studentAcademic'
 import PageHeader from '../../components/PageHeader'
 import AvatarPicker from '../../components/AvatarPicker'
+import ProfileFacts from '../../components/ProfileFacts'
+import { ContactFields, contactFromUser, emptyContact } from '../../components/ContactFields'
+import { flash, flashError } from '../../components/NoticeHost'
 
 function AdminUserDetail() {
   const { id } = useParams()
@@ -16,9 +18,10 @@ function AdminUserDetail() {
   const [change, setChange] = useState(0)
   const [desc, setDesc] = useState('')
   const [editMode, setEditMode] = useState(false)
-  const [editForm, setEditForm] = useState({ name: '', username: '', status: 1, enrollYear: '', enrollGrade: '', currentGrade: '' })
+  const [editForm, setEditForm] = useState({ name: '', username: '', status: 1, enrollYear: '', enrollGrade: '', currentGrade: '', groupId: '', ...emptyContact() })
   const [newPwd, setNewPwd] = useState('')
   const [saving, setSaving] = useState(false)
+  const [groups, setGroups] = useState([])
 
   const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
 
@@ -32,6 +35,8 @@ function AdminUserDetail() {
         enrollYear: res.data.USER_ENROLL_YEAR || '',
         enrollGrade: res.data.USER_ENROLL_GRADE || '',
         currentGrade: res.data.USER_CURRENT_GRADE || '',
+        groupId: res.data.USER_GROUP_ID || '',
+        ...contactFromUser(res.data),
       })
     })
   }
@@ -44,10 +49,11 @@ function AdminUserDetail() {
       if (res.data?.joins) setJoins(prev => prev.length ? prev : res.data.joins)
     })
     api.get(`/admin/users/${id}/lesson-logs`, { headers }).then(res => setLogs(res.data || []))
+    api.get('/admin/fee-groups', { headers }).then(res => setGroups(res.data || [])).catch(() => setGroups([]))
   }, [id])
 
   const handleLesson = async (type) => {
-    if (!change) { alert('請輸入課時數'); return }
+    if (!change) { flash('error', '請輸入 Credit 數量'); return }
     try {
       await api.post(`/admin/users/${id}/lesson`, { change: type === 'add' ? Math.abs(change) : -Math.abs(change), desc }, { headers })
       loadUser()
@@ -55,8 +61,8 @@ function AdminUserDetail() {
       setDesc('')
       const logRes = await api.get(`/admin/users/${id}/lesson-logs`, { headers })
       setLogs(logRes.data || [])
-      alert('操作成功')
-    } catch (err) { alert(err.msg || '操作失敗') }
+      flash('ok', '操作成功')
+    } catch (err) { flashError(err, '操作失敗') }
   }
 
   const handleSaveProfile = async () => {
@@ -66,18 +72,18 @@ function AdminUserDetail() {
       await api.post(`/admin/users/${id}/type`, { type: user.USER_TYPE }, { headers })
       loadUser()
       setEditMode(false)
-      alert('保存成功')
-    } catch (err) { alert(err.msg || '保存失敗') }
+      flash('ok', '保存成功')
+    } catch (err) { flashError(err, '保存失敗') }
     finally { setSaving(false) }
   }
 
   const handleResetPwd = async () => {
-    if (!newPwd || newPwd.length < 4) { alert('密碼至少 4 位'); return }
+    if (!newPwd || newPwd.length < 4) { flash('error', '密碼至少 4 位'); return }
     try {
       await api.post(`/admin/users/${id}/password`, { password: newPwd }, { headers })
       setNewPwd('')
-      alert('密碼重置成功')
-    } catch (err) { alert(err.msg || '重置失敗') }
+      flash('ok', '密碼重置成功')
+    } catch (err) { flashError(err, '重置失敗') }
   }
 
   const handleAvatar = async (file) => {
@@ -88,13 +94,17 @@ function AdminUserDetail() {
       const next = res.data || res
       setUser(next)
     } catch (err) {
-      alert(err.msg || '頭像上傳失敗')
+      flashError(err, '頭像上傳失敗')
     }
   }
 
   const handleTypeChange = async (newType) => {
-    await api.post(`/admin/users/${id}/type`, { type: newType }, { headers })
-    setUser({ ...user, USER_TYPE: newType })
+    try {
+      await api.post(`/admin/users/${id}/type`, { type: newType }, { headers })
+      setUser({ ...user, USER_TYPE: newType })
+    } catch (err) {
+      flashError(err, '更新失敗')
+    }
   }
 
   const statusText = (s) => {
@@ -113,7 +123,14 @@ function AdminUserDetail() {
     return map[t] || '其他'
   }
 
-  if (!user) return <div className="page-container"><p className="empty-state">載入中...</p></div>
+  if (!user) {
+    return (
+      <div className="page-container">
+        <PageHeader title="用戶詳情" onBack={() => navigate(-1)} />
+        <p className="empty-state">載入中...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
@@ -131,18 +148,8 @@ function AdminUserDetail() {
               <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <AvatarPicker src={user.USER_AVATAR} name={user.USER_NAME} id={user.USER_ID} colorIndex={user.USER_COLOR_INDEX} onFile={handleAvatar} size={72} />
                 <div>
-                <h3 style={{ fontSize: 18, marginBottom: 8 }}>{user.USER_NAME}</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 4 }}>帳號：{user.USER_USERNAME || user.USER_MOBILE || '-'}</p>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>
-                  身份：<span style={{ color: user.USER_TYPE === 2 ? 'var(--accent-gold)' : 'var(--text-primary)' }}>{user.USER_TYPE === 2 ? '教師' : '學員'}</span>
-                  　帳號：<span className={user.USER_STATUS === 1 ? 'badge-success' : 'badge-muted'}>{user.USER_STATUS === 1 ? '正常' : '停用'}</span>
-                </p>
-                {user.USER_TYPE !== 2 && (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>
-                    學籍：<span className={schoolStatusClass(user.USER_SCHOOL_STATUS)}>{user.USER_SCHOOL_STATUS || '未設定'}</span>
-                    {user.USER_CURRENT_GRADE && <span>　{user.USER_ENROLL_YEAR} 入學 {user.USER_ENROLL_GRADE} → {user.USER_CURRENT_GRADE}</span>}
-                  </p>
-                )}
+                <h3 style={{ fontSize: 18, marginBottom: 10 }}>{user.USER_NAME}</h3>
+                <ProfileFacts user={user} admin />
                 </div>
               </div>
               <button className="btn-primary-sm" onClick={() => setEditMode(true)}>編輯</button>
@@ -150,11 +157,11 @@ function AdminUserDetail() {
             <div style={{ display: 'flex', gap: 32, marginTop: 14 }}>
               <div style={{ textAlign: 'center' }}>
                 <div className="stat-number" style={{ color: 'var(--accent)' }}>{user.USER_LESSON_TOTAL_CNT || 0}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>剩餘課時</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>剩餘 Credit</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div className="stat-number">{user.USER_LESSON_USED_CNT || 0}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>已約課時</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>已用 Credit</div>
               </div>
             </div>
           </>
@@ -183,11 +190,21 @@ function AdminUserDetail() {
                 <option value={0}>停用</option>
               </select>
             </div>
+            <ContactFields value={editForm} onChange={setEditForm} />
             {user.USER_TYPE !== 2 && (
-              <AcademicFields
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>收費群組</label>
+                  <select value={editForm.groupId || ''} onChange={e => setEditForm({ ...editForm, groupId: e.target.value })} required>
+                    <option value="">請選擇</option>
+                    {groups.map(g => <option key={g.GROUP_ID} value={g.GROUP_ID}>{g.GROUP_NAME}</option>)}
+                  </select>
+                </div>
+                <AcademicFields
                 value={{ enrollYear: editForm.enrollYear, enrollGrade: editForm.enrollGrade, currentGrade: editForm.currentGrade }}
                 onChange={next => setEditForm({ ...editForm, ...next })}
               />
+              </>
             )}
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn-primary" onClick={handleSaveProfile} disabled={saving}>{saving ? '保存中...' : '保存'}</button>
@@ -208,14 +225,14 @@ function AdminUserDetail() {
 
       {/* Lesson adjustment */}
       <div className="card card-animate" style={{ animationDelay: '0.2s', marginTop: 16 }}>
-        <h3 style={{ fontSize: 16, marginBottom: 12 }}>課時調整</h3>
+        <h3 style={{ fontSize: 16, marginBottom: 12 }}>Credit 調整</h3>
         <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-          <input type="number" value={change} onChange={e => setChange(Number(e.target.value))} placeholder="課時數" style={{ width: 100 }} />
-          <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="備註" style={{ flex: 1, minWidth: 120 }} />
+          <input type="number" value={change} onChange={e => setChange(Number(e.target.value))} placeholder="數量" style={{ width: 100 }} />
+          <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="備註（例如線下收款 500 元）" style={{ flex: 1, minWidth: 120 }} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-primary-sm" onClick={() => handleLesson('add')}>增加課時</button>
-          <button className="btn-primary-sm" style={{ background: 'var(--danger)' }} onClick={() => handleLesson('reduce')}>減少課時</button>
+          <button className="btn-primary-sm" onClick={() => handleLesson('add')}>增加 Credit</button>
+          <button className="btn-primary-sm" style={{ background: 'var(--danger)' }} onClick={() => handleLesson('reduce')}>減少 Credit</button>
         </div>
       </div>
 
@@ -290,7 +307,7 @@ function AdminUserDetail() {
 
       {/* Lesson logs */}
       <div className="card card-animate" style={{ animationDelay: '0.4s', marginTop: 16 }}>
-        <h3 style={{ fontSize: 16, marginBottom: 12 }}>課時變動記錄</h3>
+        <h3 style={{ fontSize: 16, marginBottom: 12 }}>Credit 變動記錄</h3>
         {logs.length === 0 && <p className="empty-state">暫無記錄</p>}
         {logs.map(item => (
           <div key={item.LESSON_LOG_ID} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
@@ -301,7 +318,7 @@ function AdminUserDetail() {
               </span>
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-              {new Date(item.LESSON_LOG_ADD_TIME).toLocaleString()} · 餘{item.LESSON_LOG_NOW_CNT}課時
+              {new Date(item.LESSON_LOG_ADD_TIME).toLocaleString()} · 餘 {item.LESSON_LOG_NOW_CNT} Credit
               {item.LESSON_LOG_DESC && <span> · {item.LESSON_LOG_DESC}</span>}
             </p>
           </div>

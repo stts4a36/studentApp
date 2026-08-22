@@ -4,8 +4,9 @@ import dayjs from 'dayjs'
 import api from '../utils/api'
 import TeacherFace from './TeacherFace'
 import { colorFor } from '../utils/color'
-import { displayTitle } from '../utils/days'
+import { displayTitle, formatRange12 } from '../utils/days'
 import './SlotPopover.css'
+import { flashError } from './NoticeHost'
 
 const SHORT_DOW = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -84,25 +85,11 @@ function placeNear(anchor, pop) {
     || tryPlace(ar.left, ar.top - gap - pr.height, 'top')
     || {
       left: Math.max(minL, Math.min(ar.left, maxL)),
-      top: ar.bottom + gap,
+      top: Math.max(minT, Math.min(ar.bottom + gap, maxT)),
       placement: 'bottom',
       arrow: Math.min(pr.width - 16, Math.max(16, ar.width / 2)),
     }
   )
-}
-
-function copyText(value) {
-  if (!value) return Promise.resolve()
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
-  return new Promise(resolve => {
-    const el = document.createElement('textarea')
-    el.value = value
-    document.body.appendChild(el)
-    el.select()
-    document.execCommand('copy')
-    document.body.removeChild(el)
-    resolve()
-  })
 }
 
 function ConfirmBox({ title, body, ok = '確定', danger, onCancel, onOk }) {
@@ -122,7 +109,7 @@ function ConfirmBox({ title, body, ok = '確定', danger, onCancel, onOk }) {
 
 export default function SlotPopover({
   bundle, now, apiPath, teachers = [], isAdmin, anchorEl,
-  onClose, onReload, onMove,
+  onClose, onReload,
 }) {
   const navigate = useNavigate()
   const events = bundle.events || [bundle]
@@ -140,26 +127,15 @@ export default function SlotPopover({
   const waiting = events.reduce((s, item) => s + (item.waiting || 0), 0)
   const unassigned = slotTeachers.length === 0
   const combined = events.length > 1
+  const hubBase = apiPath.startsWith('/admin') ? '/admin/meet' : '/work/meet'
+  const settingsPath = `${hubBase}/${ev.meetId}/settings`
+  const timePath = `${hubBase}/${ev.meetId}/time`
 
   const [mobile, setMobile] = useState(isMobile)
-  const [editing, setEditing] = useState(false)
-  const [copyOpen, setCopyOpen] = useState(false)
-  const [copyDay, setCopyDay] = useState('')
   const [assignOpen, setAssignOpen] = useState(unassigned)
   const [confirm, setConfirm] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    day: ev.day,
-    start: ev.start,
-    end: ev.end,
-    limit: ev.limit || 5,
-    teacherId: slotTeachers[0]?.USER_ID || '',
-    studentAction: 'move',
-  })
-  const [copied, setCopied] = useState(false)
   const popRef = useRef(null)
   const [pos, setPos] = useState(null)
-  const joinLink = `${window.location.origin}/meet/${ev.meetId}`
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)')
@@ -170,18 +146,7 @@ export default function SlotPopover({
   }, [])
 
   useEffect(() => {
-    setEditing(false)
-    setCopyOpen(false)
-    setCopied(false)
     setAssignOpen(unassigned)
-    setForm({
-      day: ev.day,
-      start: ev.start,
-      end: ev.end,
-      limit: ev.limit || 5,
-      teacherId: slotTeachers[0]?.USER_ID || '',
-      studentAction: 'move',
-    })
   }, [ev.dayId, ev.mark, ev.day, ev.start, ev.end])
 
   useLayoutEffect(() => {
@@ -199,7 +164,7 @@ export default function SlotPopover({
       window.removeEventListener('resize', update)
       window.removeEventListener('scroll', update, true)
     }
-  }, [mobile, anchorEl, editing, copyOpen, assignOpen, bundle])
+  }, [mobile, anchorEl, assignOpen, bundle])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -215,9 +180,9 @@ export default function SlotPopover({
   useEffect(() => {
     const root = popRef.current
     if (!root) return
-    const target = editing ? root.querySelector('input, select, textarea') : root.querySelector('.slot-pop-x')
+    const target = root.querySelector('.slot-pop-x')
     ;(target || root).focus()
-  }, [ev.dayId, ev.mark, editing, mobile])
+  }, [ev.dayId, ev.mark, mobile])
 
   useEffect(() => {
     if (mobile) return
@@ -239,12 +204,17 @@ export default function SlotPopover({
     ? `/admin/meet/${ev.meetId}/list?day=${ev.day}&slot=${ev.start}-${ev.end}`
     : `/work/meet/${ev.meetId}/list?day=${ev.day}&slot=${ev.start}-${ev.end}`
 
+  const goHub = (path) => {
+    onClose()
+    navigate(path)
+  }
+
   const checkin = async (joinId) => {
     try {
       await api.post(checkinPath(joinId), {})
       onReload?.()
     } catch (err) {
-      alert(err.msg || '核銷失敗')
+      flashError(err, '核銷失敗')
     }
   }
 
@@ -254,7 +224,7 @@ export default function SlotPopover({
       setAssignOpen(false)
       onReload?.()
     } catch (err) {
-      alert(err.msg || '指派教師失敗')
+      flashError(err, '指派教師失敗')
     }
   }
 
@@ -276,105 +246,10 @@ export default function SlotPopover({
     assignTeacher(teacherId)
   }
 
-  const copyJoinLink = async () => {
-    await copyText(joinLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1600)
-  }
-
-  const copySlot = async () => {
-    if (!copyDay) { alert('請選擇日期'); return }
-    if (isAdmin && events.some(item => !item.teachers?.[0]?.USER_ID && !form.teacherId)) {
-      alert('請先指派教師再複製')
-      return
-    }
-    const times = events.map(item => ({
-      start: item.start,
-      end: item.end,
-      limit: item.limit || 5,
-      teacherId: item.teachers?.[0]?.USER_ID || form.teacherId,
-    }))
-    const path = isAdmin ? `/admin/meet/${ev.meetId}/days` : `/work/meet/${ev.meetId}/days`
-    try {
-      await api.post(path, { day: copyDay, times })
-      setCopyOpen(false)
-      onReload?.()
-    } catch (err) {
-      alert(err.msg || '複製失敗')
-    }
-  }
-
-  const deleteSlots = async () => {
-    try {
-      for (const item of events) await api.delete(metaPath(item))
-      onClose()
-      onReload?.()
-    } catch (err) {
-      alert(err.msg || '刪除失敗')
-    }
-  }
-
-  const askDelete = () => {
-    if (enrolled > 0) {
-      setConfirm({
-        title: '刪除時段',
-        body: `已有 ${enrolled} 人報名，刪除會取消預約、退還課時並通知學員。確定刪除？`,
-        danger: true,
-        ok: '刪除並通知',
-        run: deleteSlots,
-      })
-      return
-    }
-    deleteSlots()
-  }
-
-  const saveEdit = async () => {
-    const nextLimit = parseInt(form.limit, 10)
-    if (!form.day || !form.start || !form.end || form.end <= form.start) {
-      alert('請填寫完整時間')
-      return
-    }
-    if (!nextLimit || nextLimit < 1) { alert('上限至少為 1'); return }
-    const maxSlot = Math.max(...events.map(item => item.enrolled || 0), 0)
-    if (!combined && nextLimit < maxSlot) {
-      alert(`已有 ${maxSlot} 人報名，上限不可低於 ${maxSlot}`)
-      return
-    }
-    const timeChanged = form.day !== ev.day || form.start !== ev.start || form.end !== ev.end
-    await commitEdit(nextLimit, timeChanged)
-  }
-
-  const commitEdit = async (nextLimit, timeChanged) => {
-    setSaving(true)
-    try {
-      for (const item of events) {
-        if (!combined && isAdmin && form.teacherId !== (item.teachers?.[0]?.USER_ID || '')) {
-          await api.put(metaPath(item), { teacherId: form.teacherId })
-        }
-        if (!combined && nextLimit !== item.limit) await api.put(metaPath(item), { limit: nextLimit })
-        if (timeChanged) {
-          await onMove(item, {
-            day: form.day,
-            start: form.start,
-            end: form.end,
-            teacherId: item.teachers?.[0]?.USER_ID,
-            studentAction: enrolled > 0 ? form.studentAction : undefined,
-          })
-        }
-      }
-      setEditing(false)
-      onReload?.()
-    } catch (err) {
-      alert(err.msg || '儲存失敗')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const shown = students.slice(0, 5)
   const extra = students.length - shown.length
   const pct = limit ? Math.min(100, (enrolled / limit) * 100) : 0
-  const dateLine = `${ev.day}（${SHORT_DOW[dayjs(ev.day).day()]}）${ev.start}–${ev.end}`
+  const dateLine = `${ev.day}（${SHORT_DOW[dayjs(ev.day).day()]}）${formatRange12(ev.start, ev.end)}`
 
   const body = (
     <>
@@ -392,138 +267,73 @@ export default function SlotPopover({
       </div>
       <p className="slot-pop-when">{dateLine}</p>
 
-      {editing ? (
-        <div className="slot-pop-edit">
-          <label className="sched-field">
-            日期
-            <input type="date" value={form.day} onChange={e => setForm({ ...form, day: e.target.value })} />
-          </label>
-          <div className="sched-field-row">
-            <label className="sched-field">
-              開始
-              <input type="time" value={form.start} onChange={e => setForm({ ...form, start: e.target.value })} />
-            </label>
-            <label className="sched-field">
-              結束
-              <input type="time" value={form.end} onChange={e => setForm({ ...form, end: e.target.value })} />
-            </label>
-          </div>
-          {!combined && (
-          <label className="sched-field">
-            人數上限
-            <input type="number" min={Math.max(1, enrolled)} value={form.limit} onChange={e => setForm({ ...form, limit: e.target.value })} />
-          </label>
+      {slotTeachers.length ? (
+        <div className="slot-pop-teachers">
+          {slotTeachers.map(t => (
+            <span key={t.USER_ID || t.USER_NAME} className="sched-ev-teacher">
+              <TeacherFace id={t.USER_ID} src={t.USER_AVATAR} name={t.USER_NAME} size={22} colorIndex={t.USER_COLOR_INDEX} />
+              <span className="slot-pop-teacher-name">{t.USER_NAME}</span>
+            </span>
+          ))}
+          {isAdmin && canEdit && !combined && (
+            <button type="button" className="slot-pop-mini" onClick={() => setAssignOpen(v => !v)}>更換</button>
           )}
-          {isAdmin && !combined && (
-            <label className="sched-field">
-              教師
-              <select value={form.teacherId} onChange={e => setForm({ ...form, teacherId: e.target.value })}>
-                <option value="">未指派</option>
-                {teachers.map(t => (
-                  <option key={t.USER_ID} value={t.USER_ID}>{t.USER_NAME || t.USER_USERNAME}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          {enrolled > 0 && (form.day !== ev.day || form.start !== ev.start || form.end !== ev.end) && (
-            <div className="slot-pop-warn">
-              <p>已有 {enrolled} 人報名，請選擇：</p>
-              <label><input type="radio" checked={form.studentAction === 'move'} onChange={() => setForm({ ...form, studentAction: 'move' })} /> 搬遷到新時間</label>
-              <label><input type="radio" checked={form.studentAction === 'refund'} onChange={() => setForm({ ...form, studentAction: 'refund' })} /> 取消並退還課時</label>
-            </div>
-          )}
-          {isAdmin && form.teacherId !== (slotTeachers[0]?.USER_ID || '') && enrolled > 0 && (
-            <p className="slot-pop-note">儲存後會通知已報名學員教師異動。</p>
-          )}
-          <div className="slot-pop-actions">
-            <button type="button" className="slot-pop-primary" disabled={saving} onClick={saveEdit}>{saving ? '儲存中...' : '儲存'}</button>
-            <button type="button" className="slot-pop-ghost" onClick={() => setEditing(false)}>取消</button>
-          </div>
         </div>
       ) : (
-        <>
-          {slotTeachers.length ? (
-            <div className="slot-pop-teachers">
-              {slotTeachers.map(t => (
-                <span key={t.USER_ID || t.USER_NAME} className="sched-ev-teacher">
-                  <TeacherFace id={t.USER_ID} src={t.USER_AVATAR} name={t.USER_NAME} size={22} colorIndex={t.USER_COLOR_INDEX} />
-                  <span className="slot-pop-teacher-name">{t.USER_NAME}</span>
-                </span>
-              ))}
-              {isAdmin && canEdit && !combined && (
-                <button type="button" className="slot-pop-mini" onClick={() => setAssignOpen(v => !v)}>更換</button>
-              )}
-            </div>
-          ) : (
-            <p className="sched-unassigned">未指派教師</p>
-          )}
-          {isAdmin && canEdit && !combined && (unassigned || assignOpen) && (
-            <label className="sched-field">
-              {unassigned ? '指派教師' : '更換教師'}
-              <select defaultValue={slotTeachers[0]?.USER_ID || ''} onChange={e => { if (e.target.value) askAssign(e.target.value) }}>
-                <option value="">{unassigned ? '選擇教師' : '選擇新教師'}</option>
-                {teachers.map(t => (
-                  <option key={t.USER_ID} value={t.USER_ID}>{t.USER_NAME || t.USER_USERNAME}</option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <div className={`slot-pop-cap ${capTone(enrolled, limit)}${enrolled ? '' : ' is-empty'}`}>
-            {enrolled > 0
-              ? <span className="slot-pop-cap-bar"><i style={{ width: `${pct}%` }} /></span>
-              : <span className="slot-pop-cap-track" />}
-            {ended
-              ? `報名 ${enrolled}/${limit || 0} · 已核銷 ${checkedIn} · 候補 ${waiting}`
-              : `報名 ${enrolled}/${limit || 0} · 剩餘 ${Math.max(0, (limit || 0) - enrolled)} · 候補 ${waiting}`}
-          </div>
-
-          <h5 className="slot-pop-h">報名名單（{students.length}）</h5>
-          {shown.length ? (
-            <ul className="slot-pop-students">
-              {shown.map(s => (
-                <li key={s.JOIN_ID || s.USER_ID}>
-                  <span>
-                    <b>{s.USER_NAME || s.USER_USERNAME}</b>
-                    {s.USER_MOBILE ? <em>{fmtMobile(s.USER_MOBILE)}</em> : null}
-                  </span>
-                  {s.JOIN_IS_CHECKIN ? (
-                    <em className="is-in">已核銷 ✓</em>
-                  ) : canCheckin && s.JOIN_ID ? (
-                    <button type="button" className="slot-pop-mini" onClick={() => checkin(s.JOIN_ID)}>核銷</button>
-                  ) : (
-                    <em>未核銷</em>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="slot-pop-empty">尚無學員報名</p>
-          )}
-          {extra > 0 && <p className="slot-pop-empty">另有 {extra} 位未列出</p>}
-          {students.length > 0 ? (
-            <button type="button" className="slot-pop-link" onClick={() => { onClose(); navigate(listPath) }}>→ 查看完整名單</button>
-          ) : (
-            <button type="button" className="slot-pop-cta" onClick={copyJoinLink}>
-              {copied ? '已複製報名連結' : '複製報名連結'}
-            </button>
-          )}
-
-          {canEdit && (
-            <div className="slot-pop-actions">
-              <button type="button" className="slot-pop-ghost" onClick={() => setEditing(true)}>編輯時段</button>
-              <button type="button" className="slot-pop-ghost" onClick={() => { setCopyOpen(v => !v); setCopyDay('') }}>複製時段</button>
-              <button type="button" className="slot-pop-text-danger" onClick={askDelete}>刪除</button>
-            </div>
-          )}
-          {copyOpen && (
-            <div className="slot-pop-copy">
-              <input type="date" value={copyDay} min={dayjs().format('YYYY-MM-DD')} onChange={e => setCopyDay(e.target.value)} />
-              <button type="button" className="slot-pop-primary" onClick={copySlot}>複製</button>
-            </div>
-          )}
-        </>
+        <p className="sched-unassigned">未指派教師</p>
       )}
+      {isAdmin && canEdit && !combined && (unassigned || assignOpen) && (
+        <label className="sched-field">
+          {unassigned ? '指派教師' : '更換教師'}
+          <select defaultValue={slotTeachers[0]?.USER_ID || ''} onChange={e => { if (e.target.value) askAssign(e.target.value) }}>
+            <option value="">{unassigned ? '選擇教師' : '選擇新教師'}</option>
+            {teachers.map(t => (
+              <option key={t.USER_ID} value={t.USER_ID}>{t.USER_NAME || t.USER_USERNAME}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <div className={`slot-pop-cap ${capTone(enrolled, limit)}${enrolled ? '' : ' is-empty'}`}>
+        {enrolled > 0
+          ? <span className="slot-pop-cap-bar"><i style={{ width: `${pct}%` }} /></span>
+          : <span className="slot-pop-cap-track" />}
+        {ended
+          ? `報名 ${enrolled}/${limit || 0} · 已核銷 ${checkedIn} · 候補 ${waiting}`
+          : `報名 ${enrolled}/${limit || 0} · 剩餘 ${Math.max(0, (limit || 0) - enrolled)} · 候補 ${waiting}`}
+      </div>
+
+      <h5 className="slot-pop-h">報名名單（{students.length}）</h5>
+      {shown.length ? (
+        <ul className="slot-pop-students">
+          {shown.map(s => (
+            <li key={s.JOIN_ID || s.USER_ID}>
+              <span>
+                <b>{s.USER_NAME || s.USER_USERNAME}</b>
+                {s.USER_MOBILE ? <em>{fmtMobile(s.USER_MOBILE)}</em> : null}
+              </span>
+              {s.JOIN_IS_CHECKIN ? (
+                <em className="is-in">已核銷 ✓</em>
+              ) : canCheckin && s.JOIN_ID ? (
+                <button type="button" className="slot-pop-mini" onClick={() => checkin(s.JOIN_ID)}>核銷</button>
+              ) : (
+                <em>未核銷</em>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="slot-pop-empty">尚無學員報名</p>
+      )}
+      {extra > 0 && <p className="slot-pop-empty">另有 {extra} 位未列出</p>}
+      {students.length > 0 && (
+        <button type="button" className="slot-pop-link" onClick={() => goHub(listPath)}>→ 查看完整名單</button>
+      )}
+
+      <div className="slot-pop-actions">
+        <button type="button" className="slot-pop-ghost" onClick={() => goHub(settingsPath)}>編輯活動</button>
+        <button type="button" className="slot-pop-primary" onClick={() => goHub(timePath)}>時段管理</button>
+      </div>
     </>
   )
 

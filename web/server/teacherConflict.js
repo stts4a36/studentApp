@@ -32,6 +32,17 @@ function slotTeacherTokens(slot) {
     .filter(Boolean)
 }
 
+function clock12(timeStr) {
+  const parts = String(timeStr || '').split(':')
+  let h = Number(parts[0])
+  const m = Number(parts[1] || 0)
+  if (!Number.isFinite(h)) return String(timeStr || '')
+  h = ((Math.trunc(h) % 24) + 24) % 24
+  const period = h < 12 ? '上午' : '下午'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${period} ${h12}:${String(Math.abs(m)).padStart(2, '0')}`
+}
+
 function isSameTeacher(slot, teacher) {
   const keys = teacherKeys(teacher)
   if (!keys.size) return false
@@ -60,7 +71,7 @@ export async function findTeacherSlotConflict(db, { teacherId, teacherName, meet
       if (excludeMark && row.DAY_MEET_ID === meetId && slot.mark === excludeMark) continue
       if (!isSameTeacher(slot, teacher)) continue
       if (overlaps(start, end, slot.start, slot.end)) {
-        return `教師 ${label} 與「${row.MEET_TITLE}」${slot.start}-${slot.end} 衝突`
+        return `教師 ${label} 與「${row.MEET_TITLE}」${clock12(slot.start)}–${clock12(slot.end)} 衝突`
       }
     }
   }

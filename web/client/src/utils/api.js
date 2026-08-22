@@ -61,4 +61,8 @@ api.interceptors.response.use(
   }
 )
 
+export function apiError(err, fallback = '操作失敗') {
+  return err?.msg || err?.message || fallback
+}
+
 export default api

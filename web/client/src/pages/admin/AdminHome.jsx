@@ -6,7 +6,16 @@ function AdminHome() {
 
   useEffect(() => {
     api.get('/admin/home', { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } })
-      .then(res => setStats(res.data || {}))
+      .then(res => {
+        const data = res.data || {}
+        setStats(data)
+        if (data.adminType != null) {
+          try {
+            const admin = JSON.parse(localStorage.getItem('admin') || '{}')
+            localStorage.setItem('admin', JSON.stringify({ ...admin, type: data.adminType }))
+          } catch {}
+        }
+      })
   }, [])
 
   return (

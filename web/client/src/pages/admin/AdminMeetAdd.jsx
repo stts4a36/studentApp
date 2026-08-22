@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
 import GroupPerms from '../../components/GroupPerms'
+import PageHeader from '../../components/PageHeader'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminMeetAdd() {
   const [form, setForm] = useState({ title: '', cateName: '', cancelSet: 1, teacherView: 1, teacherEdit: 1, studentView: 1, studentEdit: 1 })
@@ -23,13 +25,13 @@ function AdminMeetAdd() {
       const res = await api.post('/admin/meet', form, { headers })
       const id = res.data?.MEET_ID
       navigate(id ? `/admin/meet/${id}/time` : '/admin/meet')
-    } catch (err) { alert(err.msg || '新增失敗') }
+    } catch (err) { flashError(err, '新增失敗') }
     finally { setLoading(false) }
   }
 
   return (
     <div className="page-container">
-      <h2 className="section-title">新增活動</h2>
+      <PageHeader title="新增活動" onBack={() => navigate('/admin/meet')} />
       <div className="card card-animate" style={{ maxWidth: 640 }}>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>

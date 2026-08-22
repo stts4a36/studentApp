@@ -38,7 +38,7 @@ export default function GroupPerms({ value, onChange }) {
     <div className="group-perms">
       <div className="group-perms-label">活動權限</div>
       <div className="group-perms-grid">
-        {row('teacher', '教師', '全體教師適用，無須指定個人', '編輯')}
+        {row('teacher', '教師', '全體教師適用，無須指定個人', '編堂')}
         {row('student', '學員', '全體學員適用，無須指定個人', '報名')}
       </div>
     </div>

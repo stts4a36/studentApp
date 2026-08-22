@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../../utils/api'
 import PageHeader from '../../components/PageHeader'
 import GroupPerms from '../../components/GroupPerms'
+import { flashError } from '../../components/NoticeHost'
 
 function AdminMeetEdit() {
   const { id } = useParams()
@@ -32,7 +33,7 @@ function AdminMeetEdit() {
     try {
       await api.put(`/admin/meet/${id}`, form, { headers })
       navigate('/admin/meet')
-    } catch (err) { alert(err.msg || '儲存失敗') }
+    } catch (err) { flashError(err, '儲存失敗') }
     finally { setLoading(false) }
   }
 

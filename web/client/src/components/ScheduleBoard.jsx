@@ -3,23 +3,17 @@ import dayjs from 'dayjs'
 import api from '../utils/api'
 import SlotPopover from './SlotPopover'
 import TeacherFace, { ActivityMark } from './TeacherFace'
-import { colorFor, activityColor, courseToken, teacherColor } from '../utils/color'
-import { displayTitle, titleKind, hourLabel24, parseClock, WEEK_LABELS, WEEK_SHORT } from '../utils/days'
+import CalendarApp, { weekDays, CalKindPicker } from './CalendarApp'
+import CalendarEventForm from './CalendarEventForm'
+import { activityColor, courseToken, privateToken, teacherColor } from '../utils/color'
+import { displayTitle, formatClock12, titleKind, hourLabel24, parseClock, WEEK_LABELS, WEEK_SHORT } from '../utils/days'
+import { loadHours, subscribeHours } from '../utils/hours'
+import PageHeader from './PageHeader'
 import './ScheduleBoard.css'
+import './CalendarApp.css'
 
-const HOURS_KEY = 'schedBizHours'
 const NAME_COL = 148
-
-function loadHours() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(HOURS_KEY) || '{}')
-    const start = Math.min(20, Math.max(6, Number(raw.start) || 8))
-    const end = Math.min(24, Math.max(start + 4, Number(raw.end) || 22))
-    return { start, end }
-  } catch {
-    return { start: 8, end: 22 }
-  }
-}
+const PRIVATE_ID = '__private__'
 
 function hourLabels(start, end) {
   return Array.from({ length: Math.max(1, end - start) }, (_, i) => start + i)
@@ -80,6 +74,12 @@ function missingTeacher(ev) {
   return !(ev.teachers || []).length
 }
 
+function eventOnTeacher(ev, teacherId) {
+  if (!teacherId) return false
+  if ((ev.teachers || []).some(x => x.USER_ID === teacherId)) return true
+  return !!ev.private && ev.ownerUserId === teacherId
+}
+
 function capacityLabel(ev) {
   return `${ev.enrolled || 0}/${ev.limit || 0}`
 }
@@ -96,6 +96,28 @@ function storageKey(apiPath) {
   return `schedTeachers:${apiPath}`
 }
 
+function mineStorageKey(apiPath) {
+  return `schedMine:${apiPath}`
+}
+
+function workSelfId() {
+  try {
+    return JSON.parse(localStorage.getItem('work') || '{}').USER_ID || ''
+  } catch {
+    return ''
+  }
+}
+
+function loadMineOnly(apiPath) {
+  try {
+    const raw = localStorage.getItem(mineStorageKey(apiPath))
+    if (raw == null) return true
+    return raw === '1'
+  } catch {
+    return true
+  }
+}
+
 function loadTeacherIds(apiPath) {
   try {
     const raw = JSON.parse(localStorage.getItem(storageKey(apiPath)) || '[]')
@@ -106,10 +128,12 @@ function loadTeacherIds(apiPath) {
 }
 
 function eventKey(ev, i = 0) {
+  if (ev.private) return `p-${ev.eventId || ev.mark}-${ev.day}-${i}`
   return `${ev.meetId}-${ev.day}-${ev.mark}-${i}`
 }
 
 function slotKey(ev) {
+  if (ev.private) return `p|${ev.eventId || ev.mark}|${ev.day}`
   return `${ev.dayId || ''}|${ev.mark || ''}`
 }
 
@@ -129,7 +153,7 @@ function groupBundles(items) {
   const map = {}
   const order = []
   for (const ev of items || []) {
-    const key = `${ev.meetId}|${ev.day}|${ev.start}|${ev.end}`
+    const key = ev.private ? `p|${ev.eventId || ev.mark}|${ev.day}` : `${ev.meetId}|${ev.day}|${ev.start}|${ev.end}`
     if (!map[key]) {
       map[key] = {
         ...ev,
@@ -186,11 +210,9 @@ function groupByDay(list) {
 }
 
 export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: viewProp, onViewChange }) {
-  const wideCal = useWideCalendar()
-  const [view, setView] = useState(viewProp || 'team')
+  const [view, setView] = useState(viewProp || 'calendar')
   const [anchor, setAnchor] = useState(() => dayjs())
   const [teamSpan, setTeamSpan] = useState('day')
-  const [monthCollapsed, setMonthCollapsed] = useState(false)
   const [members, setMembers] = useState([])
   const [activities, setActivities] = useState([])
   const [events, setEvents] = useState([])
@@ -204,12 +226,26 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
   const [meetQuery, setMeetQuery] = useState('')
   const [meetId, setMeetId] = useState('')
   const [showOff, setShowOff] = useState(false)
+  const [mineOnly, setMineOnly] = useState(() => !apiPath.startsWith('/admin') && loadMineOnly(apiPath))
+  const [calPane, setCalPane] = useState('month')
+  const [calSpan, setCalSpan] = useState(7)
+  const [calKinds, setCalKinds] = useState({ company: true, private: true })
+  const [kindOpen, setKindOpen] = useState(false)
+  const [calAddTick, setCalAddTick] = useState(0)
+  const [calAddEl, setCalAddEl] = useState(null)
+  const [canPrivate, setCanPrivate] = useState(false)
   const [sheet, setSheet] = useState(null)
+  const [eventForm, setEventForm] = useState(null)
   const [draft, setDraft] = useState(null)
   const [hours, setHours] = useState(loadHours)
   const [now, setNow] = useState(() => dayjs())
   const swipeX = useRef(null)
   const isAdmin = apiPath.startsWith('/admin')
+  const selfId = isAdmin ? '' : workSelfId()
+  const filterMine = !isAdmin && mineOnly && !!selfId
+  const mineScoped = (ev) => !filterMine || eventOnTeacher(ev, selfId)
+
+  useEffect(() => subscribeHours(setHours), [])
 
   useEffect(() => {
     const id = setInterval(() => setNow(dayjs()), 30000)
@@ -238,6 +274,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
       setMembers(data.members || [])
       setActivities(data.activities || [])
       setEvents(data.events || [])
+      setCanPrivate(!!data.canPrivate)
     }).catch(() => {})
   }
 
@@ -248,15 +285,26 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
       setMembers(data.members || [])
       setActivities(data.activities || [])
       setEvents(data.events || [])
+      setCanPrivate(!!data.canPrivate)
     }).catch(() => {
       setMembers([]); setActivities([]); setEvents([])
     }).finally(() => setLoaded(true))
   }, [apiPath, fetchRange.start, fetchRange.end])
 
-  const teachers = useMemo(
-    () => members.filter(isTeacher).sort((a, b) => (a.USER_NAME || '').localeCompare(b.USER_NAME || '', 'zh-Hant')),
-    [members],
-  )
+  const teachers = useMemo(() => {
+    const map = new Map()
+    for (const t of members.filter(isTeacher)) {
+      if (t.USER_ID) map.set(t.USER_ID, t)
+    }
+    for (const ev of events) {
+      if (!ev.private) continue
+      for (const t of ev.teachers || []) {
+        if (!t.USER_ID || map.has(t.USER_ID) || Number(t.USER_TYPE) === 0) continue
+        map.set(t.USER_ID, t)
+      }
+    }
+    return [...map.values()].sort((a, b) => (a.USER_NAME || '').localeCompare(b.USER_NAME || '', 'zh-Hant'))
+  }, [members, events])
 
   const busyIds = useMemo(() => {
     const weekStart = anchor.startOf('week').format('YYYY-MM-DD')
@@ -265,6 +313,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
     events.forEach(ev => {
       if (ev.day < weekStart || ev.day > weekEnd) return
       ;(ev.teachers || []).forEach(t => { if (t.USER_ID) set.add(t.USER_ID) })
+      if (ev.private && ev.ownerUserId) set.add(ev.ownerUserId)
     })
     return set
   }, [events, anchor])
@@ -282,6 +331,11 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
     localStorage.setItem(storageKey(apiPath), JSON.stringify(teacherIds))
   }, [teacherIds, hydrated, apiPath])
 
+  useEffect(() => {
+    if (isAdmin) return
+    localStorage.setItem(mineStorageKey(apiPath), mineOnly ? '1' : '0')
+  }, [mineOnly, apiPath, isAdmin])
+
   const kinds = useMemo(() => {
     const set = new Set()
     activities.forEach(a => { const k = titleKind(a.MEET_TITLE, a.MEET_CATE_NAME); if (k) set.add(k) })
@@ -289,12 +343,17 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
     return [...set]
   }, [activities, events])
 
-  const listedActivities = useMemo(
-    () => showOff ? activities : activities.filter(a => Number(a.MEET_STATUS) === 1),
-    [activities, showOff],
-  )
+  const listedActivities = useMemo(() => {
+    let list = showOff ? activities : activities.filter(a => Number(a.MEET_STATUS) === 1)
+    if (filterMine) {
+      const ids = new Set(events.filter(ev => !ev.private && eventOnTeacher(ev, selfId)).map(ev => ev.meetId))
+      list = list.filter(a => ids.has(a.MEET_ID))
+    }
+    return list
+  }, [activities, showOff, events, filterMine, selfId])
 
   useEffect(() => {
+    if (meetId === PRIVATE_ID) return
     if (meetId && !listedActivities.some(a => a.MEET_ID === meetId)) setMeetId('')
   }, [meetId, listedActivities])
 
@@ -302,29 +361,50 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
 
   const activityEvents = useMemo(() => {
     return events.filter(ev => {
+      if (filterMine && !eventOnTeacher(ev, selfId)) return false
+      if (meetId === PRIVATE_ID) return !!ev.private
+      if (ev.private) return !meetId
       if (!showOff && Number(ev.status) !== 1) return false
       if (meetId && ev.meetId !== meetId) return false
       return true
     })
-  }, [events, meetId, showOff])
+  }, [events, meetId, showOff, filterMine, selfId])
 
-  const dayEvents = useMemo(
-    () => events.filter(ev => ev.day === anchor.format('YYYY-MM-DD')).sort((a, b) => String(a.start).localeCompare(String(b.start))),
-    [events, anchor],
-  )
+  const calendarEvents = useMemo(() => {
+    return events.filter(ev => {
+      if (filterMine && !eventOnTeacher(ev, selfId)) return false
+      return ev.private ? calKinds.private : calKinds.company
+    })
+  }, [events, calKinds, filterMine, selfId])
 
   const navLabel = useMemo(() => {
-    if (view === 'calendar' || view === 'activity') return anchor.format('YYYY年M月')
+    if (view === 'activity') return anchor.format('YYYY年M月')
+    if (view === 'calendar') {
+      if (calPane === 'month') return anchor.format('YYYY年M月')
+      if (calPane === 'week') {
+        const days = weekDays(anchor, calSpan)
+        const start = days[0]
+        const end = days[days.length - 1]
+        if (start.month() === end.month()) return `${start.format('M月D日')} – ${end.format('D日')}`
+        return `${start.format('M月D日')} – ${end.format('M月D日')}`
+      }
+      return `${anchor.format('M月D日')}（${DOW[anchor.day()]}）`
+    }
     if (view === 'team' && teamSpan === 'week') {
       const start = anchor.startOf('week')
       return `${start.format('M月D日')} – ${start.add(6, 'day').format('M月D日')}`
     }
     return `${anchor.format('M月D日')}（${DOW[anchor.day()]}）`
-  }, [view, teamSpan, anchor])
+  }, [view, teamSpan, calPane, calSpan, anchor])
 
   const shift = (dir) => {
     setAnchor(a => {
-      if (view === 'calendar' || view === 'activity') return a.add(dir, 'month')
+      if (view === 'activity') return a.add(dir, 'month')
+      if (view === 'calendar') {
+        if (calPane === 'month') return a.add(dir, 'month')
+        if (calPane === 'week') return calSpan === 3 ? a.add(dir * 3, 'day') : a.add(dir, 'week')
+        return a.add(dir, 'day')
+      }
       if (view === 'team' && teamSpan === 'week') return a.add(dir, 'week')
       return a.add(dir, 'day')
     })
@@ -355,84 +435,47 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
     setTeacherIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  const openSheet = (ev, anchor) => {
+  const openSheet = (ev, el) => {
     const list = ev.events || [ev]
-    setSheet({ type: 'event', bundle: { ...ev, events: list }, anchor: anchor || null })
+    if (ev.private || list.some(item => item.private)) {
+      setSheet(null)
+      setEventForm({ event: list[0] || ev, anchor: el })
+      return
+    }
+    setSheet({ type: 'event', bundle: { ...ev, events: list }, anchor: el || null })
   }
 
   const openCreate = (payload) => {
-    if (!activities.length) {
-      alert('請先建立活動，才能新增時段')
-      onCreate?.()
-      return
-    }
-    setDraft({
-      day: payload.day,
-      teacherId: payload.teacherId || '',
-      start: payload.start || padTime(hours.start),
-      meetId: activities.find(a => Number(a.MEET_STATUS) === 1)?.MEET_ID || activities[0].MEET_ID,
+    setSheet(null)
+    setDraft(null)
+    const start = payload.start || padTime(hours.start)
+    const end = payload.end || addClock(start, 1)
+    setEventForm({
+      preset: {
+        day: payload.day,
+        start,
+        end,
+        teacherId: payload.teacherId || '',
+      },
+      anchor: payload.anchor || null,
     })
-  }
-
-  const changeHours = (next) => {
-    const start = Math.min(20, Math.max(6, Number(next.start) || hours.start))
-    const end = Math.min(24, Math.max(start + 4, Number(next.end) || hours.end))
-    const value = { start, end }
-    setHours(value)
-    localStorage.setItem(HOURS_KEY, JSON.stringify(value))
-  }
-
-  const moveSlot = async (ev, next) => {
-    if (!ev.dayId || !ev.mark) return
-    const timeChanged = next.start !== ev.start || next.end !== ev.end || (next.day && next.day !== ev.day)
-    const teacherChanged = next.teacherId && next.teacherId !== ev.teachers?.[0]?.USER_ID
-    if (!timeChanged && !teacherChanged) return
-    if (teacherChanged && !isAdmin) {
-      alert('教師端無法改指派教師')
-      return
-    }
-    const timePath = isAdmin
-      ? `/admin/meet/days/${ev.dayId}/slot/${ev.mark}/time`
-      : `/work/meet/${ev.meetId}/days/${ev.dayId}/slot/${ev.mark}/time`
-    const metaPath = isAdmin
-      ? `/admin/meet/days/${ev.dayId}/slot/${ev.mark}`
-      : `/work/meet/${ev.meetId}/days/${ev.dayId}/slot/${ev.mark}`
-    try {
-      if (teacherChanged) await api.put(metaPath, { teacherId: next.teacherId })
-      if (timeChanged) {
-        await api.put(timePath, {
-          day: next.day || ev.day,
-          start: next.start,
-          end: next.end,
-          studentAction: next.studentAction || (ev.enrolled > 0 ? 'move' : undefined),
-        })
-      }
-      reload()
-    } catch (err) {
-      alert(err.msg || '移動失敗')
-      reload()
-    }
   }
 
   const createSlot = async (form) => {
     const path = isAdmin ? `/admin/meet/${form.meetId}/days` : `/work/meet/${form.meetId}/days`
-    try {
-      await api.post(path, {
-        day: form.day,
-        times: [{ start: form.start, end: form.end, limit: form.limit, teacherId: form.teacherId }],
-      })
-      setDraft(null)
-      reload()
-    } catch (err) {
-      alert(err.msg || '新增失敗')
-    }
+    await api.post(path, {
+      day: form.day,
+      times: [{ start: form.start, end: form.end, limit: form.limit, teacherId: form.teacherId }],
+    })
+    setDraft(null)
+    reload()
   }
 
   const teamRows = useMemo(() => {
     const dateStr = anchor.format('YYYY-MM-DD')
     const list = selectedTeachers.length ? selectedTeachers : teachers.filter(t => busyIds.has(t.USER_ID))
     return [...list].sort((a, b) => {
-      const load = (t) => events.filter(ev => ev.day === dateStr && (ev.teachers || []).some(x => x.USER_ID === t.USER_ID)).length
+      const load = (t) => events.filter(ev => ev.day === dateStr && eventOnTeacher(ev, t.USER_ID)).length
       return load(b) - load(a) || (a.USER_NAME || '').localeCompare(b.USER_NAME || '', 'zh-Hant')
     })
   }, [selectedTeachers, teachers, busyIds, events, anchor])
@@ -449,7 +492,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
   }, [events, sheet])
 
   return (
-    <div className="page-container sched-page" onClick={() => { setPickerOpen(false); setCalOpen(false) }}
+    <div className="page-container sched-page" onClick={() => { setPickerOpen(false); setCalOpen(false); setKindOpen(false) }}
       onTouchStart={e => {
         if (e.target.closest('input,select,textarea,.sched-res-event,.sched-drawer,.sched-sheet,.sched-res-wrap,.slot-pop,.slot-pop-anchor')) return
         swipeX.current = e.touches[0].clientX
@@ -462,11 +505,12 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
         shift(dx < 0 ? 1 : -1)
       }}
     >
+      <PageHeader title={title || '行程'} />
       <div className="sched-top">
         <div className="sched-tabs">
+          <button className={view === 'calendar' ? 'active' : ''} onClick={() => switchView('calendar')}>日曆檢視</button>
           <button className={view === 'team' ? 'active' : ''} onClick={() => switchView('team')}>團隊檢視</button>
           <button className={view === 'activity' ? 'active' : ''} onClick={() => switchView('activity')}>活動檢視</button>
-          <button className={view === 'calendar' ? 'active' : ''} onClick={() => switchView('calendar')}>日曆檢視</button>
         </div>
         <div className="sched-toolbar">
             <button type="button" className="sched-nav-btn" onClick={goToday}>今天</button>
@@ -483,7 +527,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
               >
                 {navLabel}
               </button>
-              {calOpen && (view === 'activity' || view === 'calendar' ? (
+              {calOpen && ((view === 'activity' || (view === 'calendar' && calPane === 'month')) ? (
                 <DateMonthCal
                   year={calMonth}
                   selected={anchor}
@@ -500,7 +544,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
                   month={calMonth}
                   selected={anchor}
                   now={now}
-                  events={events}
+                  events={view === 'calendar' ? calendarEvents : events}
                   onMonth={setCalMonth}
                   onSelect={d => {
                     setAnchor(d)
@@ -517,21 +561,28 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
                 <button className={teamSpan === 'week' ? 'active' : ''} onClick={() => setTeamSpan('week')}>週</button>
               </div>
             )}
-            {view === 'team' && teamSpan === 'day' && (
-              <label className="sched-hours">
-                營業時間
-                <select value={hours.start} onChange={e => changeHours({ ...hours, start: Number(e.target.value) })}>
-                  {Array.from({ length: 12 }, (_, i) => i + 6).map(h => (
-                    <option key={h} value={h}>{padTime(h)}</option>
-                  ))}
-                </select>
-                <span>–</span>
-                <select value={hours.end} onChange={e => changeHours({ ...hours, end: Number(e.target.value) })}>
-                  {Array.from({ length: 11 }, (_, i) => i + 14).map(h => (
-                    <option key={h} value={h} disabled={h <= hours.start}>{padTime(h)}</option>
-                  ))}
-                </select>
-              </label>
+            {view === 'calendar' && (
+              <div className="sched-period">
+                <button className={calPane === 'day' ? 'active' : ''} onClick={() => setCalPane('day')}>日</button>
+                <button className={calPane === 'week' ? 'active' : ''} onClick={() => setCalPane('week')}>週</button>
+                <button className={calPane === 'month' ? 'active' : ''} onClick={() => setCalPane('month')}>月</button>
+              </div>
+            )}
+            {(view === 'calendar' || view === 'activity') && (
+              <button
+                type="button"
+                className="sched-nav-btn"
+                onClick={e => {
+                  if (view === 'calendar') {
+                    setCalAddEl(e.currentTarget)
+                    setCalAddTick(t => t + 1)
+                    return
+                  }
+                  const day = now.isSame(anchor, 'month') ? now.format('YYYY-MM-DD') : anchor.startOf('month').format('YYYY-MM-DD')
+                  setEventForm({ preset: { day }, anchor: e.currentTarget })
+                }}
+                aria-label="新增"
+              >＋</button>
             )}
           </div>
       </div>
@@ -551,6 +602,30 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
         </div>
       )}
 
+      {view === 'calendar' && (
+        <div className="sched-filters is-cal">
+          <CalKindPicker
+            open={kindOpen}
+            setOpen={setKindOpen}
+            kinds={calKinds}
+            onToggle={(key) => setCalKinds(prev => ({ ...prev, [key]: !prev[key] }))}
+          />
+          {!isAdmin && (
+            <label className="sched-off-toggle">
+              <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} />
+              只看自己
+            </label>
+          )}
+          {calPane === 'week' && (
+            <div className="sched-period">
+              {[7, 5, 3].map(n => (
+                <button key={n} className={calSpan === n ? 'active' : ''} onClick={() => setCalSpan(n)}>{n}日</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {view === 'activity' && (
         <div className="sched-filters">
           <select
@@ -560,6 +635,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
             aria-label="選擇活動"
           >
             <option value="">全部活動</option>
+            {canPrivate && <option value={PRIVATE_ID}>私人活動</option>}
             {listedActivities.map(a => (
               <option key={a.MEET_ID} value={a.MEET_ID}>{displayTitle(a.MEET_TITLE) || '未命名活動'}{Number(a.MEET_STATUS) === 1 ? '' : '（停用）'}</option>
             ))}
@@ -568,24 +644,39 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
             <input type="checkbox" checked={showOff} onChange={e => setShowOff(e.target.checked)} />
             顯示停用
           </label>
+          {!isAdmin && (
+            <label className="sched-off-toggle">
+              <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} />
+              只看自己
+            </label>
+          )}
         </div>
       )}
 
       {view === 'calendar' && (
-        <CalendarPane
-          rich={wideCal}
-          anchor={anchor}
-          setAnchor={setAnchor}
-          collapsed={monthCollapsed}
-          setCollapsed={setMonthCollapsed}
-          events={events}
-          kinds={kinds}
-          now={now}
-          dayEvents={dayEvents}
-          onOpen={openSheet}
-          onCreate={onCreate}
-          openKey={sheet?.type === 'event' ? slotKey(sheet.bundle.events?.[0] || sheet.bundle) : ''}
-        />
+        <div className="sched-calapp">
+          <CalendarApp
+            mode={apiPath.startsWith('/admin') ? 'admin' : 'work'}
+            apiPath={apiPath}
+            onOpenCompany={(ev, el) => {
+              if (!ev || ev.private) return
+              openSheet(ev, el)
+            }}
+            hideChrome
+            events={calendarEvents}
+            activities={activities}
+            members={members}
+            canPrivate={canPrivate}
+            pane={calPane}
+            span={calSpan}
+            anchor={anchor}
+            onAnchorChange={setAnchor}
+            hours={hours}
+            addTick={calAddTick}
+            addAnchor={calAddEl}
+            onReload={reload}
+          />
+        </div>
       )}
 
       {(view === 'team' || view === 'activity') && (
@@ -605,7 +696,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
                   id: t.USER_ID,
                   selected: teacherIds.includes(t.USER_ID),
                   title: t.USER_NAME || '未命名',
-                  sub: busyIds.has(t.USER_ID) ? '本週有課' : (t.USER_USERNAME || '教師'),
+                  sub: busyIds.has(t.USER_ID) ? '本週有活動' : (t.USER_USERNAME || '教師'),
                   avatar: <TeacherFace id={t.USER_ID} src={t.USER_AVATAR} name={t.USER_NAME} size={40} colorIndex={t.USER_COLOR_INDEX} />,
                   onSelect: () => toggleTeacher(t.USER_ID),
                 }))}
@@ -618,10 +709,18 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
               placeholder="搜尋活動"
               emptyText="沒有符合的活動"
               extra={(
-                <label className="sched-off-toggle">
-                  <input type="checkbox" checked={showOff} onChange={e => setShowOff(e.target.checked)} />
-                  顯示停用
-                </label>
+                <>
+                  <label className="sched-off-toggle">
+                    <input type="checkbox" checked={showOff} onChange={e => setShowOff(e.target.checked)} />
+                    顯示停用
+                  </label>
+                  {!isAdmin && (
+                    <label className="sched-off-toggle">
+                      <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} />
+                      只看自己
+                    </label>
+                  )}
+                </>
               )}
               items={[
                 ...(!meetQuery.trim() || '全部活動'.includes(meetQuery.trim())
@@ -629,9 +728,27 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
                       id: '',
                       selected: !meetId,
                       title: '全部活動',
-                      sub: `${listedActivities.filter(a => Number(a.MEET_STATUS) === 1).length} 個使用中`,
+                      sub: `未來 7 天 ${events.filter(ev => {
+                        if (!mineScoped(ev)) return false
+                        const today = now.format('YYYY-MM-DD')
+                        const weekEnd = now.add(7, 'day').format('YYYY-MM-DD')
+                        if (ev.day < today || ev.day > weekEnd) return false
+                        if (ev.private) return true
+                        return showOff || Number(ev.status) === 1
+                      }).length} 堂`,
                       avatar: <span className="sched-rail-fallback">全</span>,
                       onSelect: () => setMeetId(''),
+                    }]
+                  : []),
+                ...((canPrivate && (!meetQuery.trim() || '私人活動'.includes(meetQuery.trim()) || 'private'.includes(meetQuery.trim().toLowerCase())))
+                  ? [{
+                      id: PRIVATE_ID,
+                      selected: meetId === PRIVATE_ID,
+                      title: '私人活動',
+                      sub: `未來 7 天 ${events.filter(ev => mineScoped(ev) && ev.private && ev.day >= now.format('YYYY-MM-DD') && ev.day <= now.add(7, 'day').format('YYYY-MM-DD')).length} 堂`,
+                      color: privateToken(0).solid,
+                      avatar: <span className="sched-rail-fallback" style={{ background: privateToken(0).solid, color: '#fff' }}>私</span>,
+                      onSelect: () => setMeetId(PRIVATE_ID),
                     }]
                   : []),
                 ...listedActivities
@@ -644,7 +761,7 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
                   .map(a => {
                     const today = now.format('YYYY-MM-DD')
                     const weekEnd = now.add(7, 'day').format('YYYY-MM-DD')
-                    const mine = events.filter(ev => ev.meetId === a.MEET_ID)
+                    const mine = events.filter(ev => ev.meetId === a.MEET_ID && mineScoped(ev))
                     const upcoming = mine.filter(ev => ev.day >= today && ev.day <= weekEnd).length
                     const warn = mine.some(ev => ev.day >= today && missingTeacher(ev))
                     const token = courseToken(a.MEET_COLOR_INDEX, a.MEET_ID)
@@ -722,7 +839,20 @@ export default function ScheduleBoard({ apiPath, onOpenMeet, onCreate, view: vie
           anchorEl={sheet.anchor}
           onClose={() => setSheet(null)}
           onReload={reload}
-          onMove={moveSlot}
+        />
+      )}
+      {eventForm && (
+        <CalendarEventForm
+          key={eventForm.event?.eventId || `${eventForm.preset?.day || ''}-${eventForm.preset?.start || ''}-${eventForm.preset?.teacherId || 'new'}`}
+          mode={isAdmin ? 'admin' : 'work'}
+          canPrivate={canPrivate}
+          activities={activities}
+          members={members}
+          preset={eventForm.preset}
+          event={eventForm.event}
+          anchorEl={eventForm.anchor}
+          onClose={() => setEventForm(null)}
+          onSaved={() => { setEventForm(null); reload() }}
         />
       )}
       {draft && (
@@ -806,7 +936,7 @@ function TeacherPicker({ open, setOpen, teachers, teacherIds, teacherQuery, setT
                 <input type="checkbox" checked={teacherIds.includes(t.USER_ID)} onChange={() => onToggle(t.USER_ID)} />
                 <TeacherFace id={t.USER_ID} src={t.USER_AVATAR} name={t.USER_NAME} size={24} colorIndex={t.USER_COLOR_INDEX} />
                 <span>{t.USER_NAME || '未命名'}</span>
-                {busyIds.has(t.USER_ID) && <em>本週有課</em>}
+                {busyIds.has(t.USER_ID) && <em>本週有活動</em>}
               </label>
             ))}
             {options.length === 0 && <p className="sched-filter-empty">沒有符合的教師</p>}
@@ -837,7 +967,7 @@ function MiniCap({ enrolled = 0, limit = 0, past, checkedIn = 0 }) {
 }
 
 function EventCard({ ev, onOpen, now, open }) {
-  const token = courseToken(ev.colorIndex, ev.meetId)
+  const token = ev.private ? privateToken(ev.colorIndex, ev.eventId) : courseToken(ev.colorIndex, ev.meetId)
   const color = token.solid
   const teachers = ev.teachers || []
   const past = isEnded(ev, now) && !isTodayEvent(ev, now)
@@ -849,22 +979,32 @@ function EventCard({ ev, onOpen, now, open }) {
       style={{ '--assigned-color': past ? '#b0b4ba' : color, '--assigned-text': token.text }}
       onClick={e => onOpen(ev, e.currentTarget)}
     >
-      <div className="sched-ev-top">
-        <strong>{ev.start}–{ev.end}</strong>
-        <span>{displayTitle(ev.title)}</span>
-        {today && isEnded(ev, now) && <em className="sched-ev-today">今天</em>}
-      </div>
-      <div className="sched-ev-bot">
-        {teachers.length ? teachers.map(t => (
-          <span key={t.USER_ID || t.USER_NAME} className="sched-ev-teacher">
-            <TeacherFace id={t.USER_ID} src={t.USER_AVATAR} name={t.USER_NAME} size={20} colorIndex={t.USER_COLOR_INDEX} />
-            <span>{t.USER_NAME}</span>
-          </span>
-        )) : (
-          <span className="sched-ev-teacher">未指派教師</span>
+      <span className={`sched-ev-when${ev.allDay ? ' is-all' : ''}`}>
+        {ev.allDay ? '全日' : (
+          <>
+            <b>{formatClock12(ev.start)}</b>
+            <em>{formatClock12(ev.end)}</em>
+          </>
         )}
-        <MiniCap enrolled={ev.enrolled} limit={ev.limit} past={isEnded(ev, now)} checkedIn={ev.checkedIn} />
-        <span className="sched-ev-go">›</span>
+      </span>
+      <div className="sched-ev-main">
+        <div className="sched-ev-top">
+          <span>{displayTitle(ev.title)}</span>
+          {ev.private && <em className="sched-ev-kind">私人</em>}
+          {today && isEnded(ev, now) && <em className="sched-ev-today">今天</em>}
+        </div>
+        <div className="sched-ev-bot">
+          {teachers.length ? teachers.map(t => (
+            <span key={t.USER_ID || t.USER_NAME} className="sched-ev-teacher">
+              <TeacherFace id={t.USER_ID} src={t.USER_AVATAR} name={t.USER_NAME} size={20} colorIndex={t.USER_COLOR_INDEX} />
+              <span>{t.USER_NAME}</span>
+            </span>
+          )) : (
+            !ev.private && <span className="sched-ev-teacher">未指派教師</span>
+          )}
+          {!ev.private && <MiniCap enrolled={ev.enrolled} limit={ev.limit} past={isEnded(ev, now)} checkedIn={ev.checkedIn} />}
+          <span className="sched-ev-go">›</span>
+        </div>
       </div>
     </button>
   )
@@ -882,6 +1022,7 @@ function CreateSlotSheet({ draft, hours, activities, teachers, isAdmin, onClose,
     limit: defaultLimit,
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   const pickMeet = (id) => {
     const next = activities.find(a => a.MEET_ID === id)
@@ -894,17 +1035,20 @@ function CreateSlotSheet({ draft, hours, activities, teachers, isAdmin, onClose,
 
   const submit = async (e) => {
     e.preventDefault()
+    setError('')
     if (!form.meetId || !form.day || !form.start || !form.end || form.end <= form.start) {
-      alert('請填寫完整時段')
+      setError('請填寫完整時段')
       return
     }
     if (isAdmin && !form.teacherId) {
-      alert('請選擇教師')
+      setError('請選擇教師')
       return
     }
     setSaving(true)
     try {
       await onSave(form)
+    } catch (err) {
+      setError(err.msg || err.message || '新增失敗')
     } finally {
       setSaving(false)
     }
@@ -953,6 +1097,7 @@ function CreateSlotSheet({ draft, hours, activities, teachers, isAdmin, onClose,
             人數上限
             <input type="number" min="1" value={form.limit} onChange={e => setForm({ ...form, limit: Number(e.target.value) })} />
           </label>
+          {error && <p className="mt-warn" style={{ margin: '0 0 10px' }}>{error}</p>}
           <div className="sched-pop-actions">
             <button type="submit" className="sched-sheet-primary" disabled={saving}>{saving ? '建立中...' : '建立時段'}</button>
             <button type="button" className="sched-sheet-ghost" onClick={onClose}>取消</button>
@@ -1042,7 +1187,7 @@ function MonthEvents({ month, selected, events, kinds, now, onSelect, onOpen, op
                     style={{ background: color.bg, color: color.text, '--bar': color.border, '--assigned-color': color.color, '--assigned-text': color.text }}
                     onClick={e => { e.stopPropagation(); onSelect(d); onOpen(ev, e.currentTarget) }}
                   >
-                    <b>{ev.start}</b>
+                    <b>{formatClock12(ev.start)}</b>
                     {displayTitle(ev.title)}
                   </button>
                 )
@@ -1170,9 +1315,10 @@ function ActivityPane({ events, kinds, now, anchor, showCate, onOpen, openKey })
 
   const dayHead = (day, items) => {
     const d = dayjs(day)
-    const enrolled = items.reduce((s, ev) => s + (ev.enrolled || 0), 0)
-    const limit = items.reduce((s, ev) => s + (ev.limit || 0), 0)
-    return `${d.format('M月D日')} ${DOW[d.day()]}${d.isSame(now, 'day') ? ' · 今天' : ''} · ${items.length} 堂 · ${enrolled}/${limit}`
+    const enrolled = items.filter(ev => !ev.private).reduce((s, ev) => s + (ev.enrolled || 0), 0)
+    const limit = items.filter(ev => !ev.private).reduce((s, ev) => s + (ev.limit || 0), 0)
+    const cap = limit ? ` · ${enrolled}/${limit}` : ''
+    return `${d.format('M月D日')} ${DOW[d.day()]}${d.isSame(now, 'day') ? ' · 今天' : ''} · ${items.length} 堂${cap}`
   }
 
   return (
@@ -1208,26 +1354,10 @@ function ActivityPane({ events, kinds, now, anchor, showCate, onOpen, openKey })
   )
 }
 
-function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreate, openKey }) {
-  const dateStr = day.format('YYYY-MM-DD')
-  const labels = hourLabels(hours.start, hours.end)
-  const hourCount = labels.length
-  const isToday = day.isSame(now, 'day')
-  const nowPct = ((parseClock(now.format('HH:mm')) - hours.start) / hourCount) * 100
+function useBoardPan() {
   const wrapRef = useRef(null)
   const panRef = useRef(null)
   const [panning, setPanning] = useState(false)
-
-  const eventStyle = (ev) => {
-    const t0 = parseClock(ev.start)
-    const t1 = Math.max(parseClock(ev.end), t0 + 0.25)
-    const left = ((t0 - hours.start) / hourCount) * 100
-    const width = ((t1 - t0) / hourCount) * 100
-    return {
-      left: `calc(${left}% + 2px)`,
-      width: `calc(${width}% - 4px)`,
-    }
-  }
 
   const startPan = (e, onClick) => {
     if (e.button !== 0) return
@@ -1265,8 +1395,33 @@ function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreat
     if (!p.moved) p.onClick?.()
   }
 
+  return { wrapRef, panning, startPan, onPanMove, endPan }
+}
+
+function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreate, openKey }) {
+  const dateStr = day.format('YYYY-MM-DD')
+  const labels = hourLabels(hours.start, hours.end)
+  const hourCount = labels.length
+  const isToday = day.isSame(now, 'day')
+  const nowPct = ((parseClock(now.format('HH:mm')) - hours.start) / hourCount) * 100
+  const { wrapRef, panning, startPan, onPanMove, endPan } = useBoardPan()
+
+  const eventStyle = (ev) => {
+    if (ev.allDay || !ev.start) {
+      return { left: '2px', width: 'calc(100% - 4px)' }
+    }
+    const t0 = parseClock(ev.start)
+    const t1 = Math.max(parseClock(ev.end), t0 + 0.25)
+    const left = ((t0 - hours.start) / hourCount) * 100
+    const width = ((t1 - t0) / hourCount) * 100
+    return {
+      left: `calc(${left}% + 2px)`,
+      width: `calc(${width}% - 4px)`,
+    }
+  }
+
   if (!teachers.length) {
-    return <p className="sched-empty">請選擇教師以查看行程。預設只顯示本週有課的教師。</p>
+    return <p className="sched-empty">請選擇教師以查看行程。預設只顯示本週有活動的教師。</p>
   }
 
   return (
@@ -1289,7 +1444,7 @@ function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreat
         </div>
       </div>
       {teachers.map(t => {
-        const rowEvents = events.filter(ev => ev.day === dateStr && (ev.teachers || []).some(x => x.USER_ID === t.USER_ID))
+        const rowEvents = events.filter(ev => ev.day === dateStr && eventOnTeacher(ev, t.USER_ID))
         return (
           <div key={t.USER_ID} className="sched-res-row" data-teacher-id={t.USER_ID}>
             <div className="sched-res-name">
@@ -1302,28 +1457,41 @@ function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreat
                   key={h}
                   type="button"
                   className="sched-res-cell"
-                  title={`${padTime(h)} 新增時段`}
-                  onClick={() => {
-                    if (dateStr < now.format('YYYY-MM-DD')) return
-                    onCreate({ day: dateStr, teacherId: t.USER_ID, start: padTime(h) })
+                  title={`${padTime(h)} 新增行程`}
+                  onPointerDown={e => {
+                    const past = dateStr < now.format('YYYY-MM-DD')
+                    startPan(e, past ? undefined : () => onCreate({
+                      day: dateStr,
+                      teacherId: t.USER_ID,
+                      start: padTime(h),
+                      end: padTime(h + 1),
+                      anchor: e.currentTarget,
+                    }))
                   }}
+                  onPointerMove={onPanMove}
+                  onPointerUp={endPan}
+                  onPointerCancel={endPan}
                 />
               ))}
               {isToday && nowPct >= 0 && nowPct <= 100 && <div className="sched-res-now" style={{ left: `${nowPct}%` }} />}
               {rowEvents.map((ev, i) => {
-                const color = colorFor(ev.meetId, ev.colorIndex)
+                const token = ev.private ? privateToken(ev.colorIndex, ev.eventId) : courseToken(ev.colorIndex, ev.meetId)
+                const color = token.solid
                 const past = isEnded(ev, now)
                 const title = displayTitle(ev.title)
+                const sub = ev.private
+                  ? (ev.allDay ? '全日' : `${formatClock12(ev.start)}–${formatClock12(ev.end)}`)
+                  : (past && !isTodayEvent(ev, now) ? `報名 ${ev.enrolled || 0} · 核銷 ${ev.checkedIn || 0}` : capacityLabel(ev))
                 return (
                   <button
                     key={eventKey(ev, i)}
                     type="button"
-                    className={`sched-res-event ${capTone(ev)}${past ? ' is-past' : ''}${openKey === slotKey(ev) ? ' is-open' : ''}`}
+                    className={`sched-res-event ${ev.private ? '' : capTone(ev)}${past ? ' is-past' : ''}${openKey === slotKey(ev) ? ' is-open' : ''}${ev.private ? ' is-private' : ''}`}
                     style={{
                       ...eventStyle(ev),
                       '--card-accent': past ? '#b0b4ba' : color,
                     }}
-                    title={`${title}${ev.cate ? ` · ${ev.cate}` : ''} · ${capacityLabel(ev)}`}
+                    title={`${title}${ev.private ? ' · 私人' : ev.cate ? ` · ${ev.cate}` : ''}${ev.private ? '' : ` · ${capacityLabel(ev)}`}`}
                     onPointerDown={e => {
                       const el = e.currentTarget
                       startPan(e, () => onOpen(ev, el))
@@ -1333,7 +1501,7 @@ function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreat
                     onPointerCancel={endPan}
                   >
                     <strong>{title}</strong>
-                    <span>{past && !isTodayEvent(ev, now) ? `報名 ${ev.enrolled || 0} · 核銷 ${ev.checkedIn || 0}` : capacityLabel(ev)}</span>
+                    <span>{sub}</span>
                   </button>
                 )
               })}
@@ -1341,18 +1509,42 @@ function ResourceDay({ day, teachers, events, kinds, now, hours, onOpen, onCreat
           </div>
         )
       })}
+      <div className="sched-res-row is-fill">
+        <div className="sched-res-name" />
+        <div
+          className="sched-res-track"
+          onPointerDown={e => startPan(e)}
+          onPointerMove={onPanMove}
+          onPointerUp={endPan}
+          onPointerCancel={endPan}
+        >
+          {labels.map(h => <div key={h} className="sched-res-cell is-fill" />)}
+          {isToday && nowPct >= 0 && nowPct <= 100 && <div className="sched-res-now" style={{ left: `${nowPct}%` }} />}
+        </div>
+      </div>
     </div>
   )
 }
 
 function ResourceWeek({ anchor, teachers, events, now, onPick, onCreate }) {
   const weekDays = Array.from({ length: 7 }, (_, i) => anchor.startOf('week').add(i, 'day'))
+  const { wrapRef, panning, startPan, onPanMove, endPan } = useBoardPan()
   if (!teachers.length) {
     return <p className="sched-empty">請選擇教師以查看行程。</p>
   }
   return (
-    <div className="sched-heat">
-      <div className="sched-heat-row is-head">
+    <div
+      className={`sched-heat${panning ? ' is-panning' : ''}`}
+      ref={wrapRef}
+      style={{ '--name-w': `${NAME_COL}px` }}
+    >
+      <div
+        className="sched-heat-row is-head"
+        onPointerDown={e => startPan(e)}
+        onPointerMove={onPanMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+      >
         <div className="sched-res-name">教師</div>
         {weekDays.map(d => (
           <div key={d.format('YYYY-MM-DD')} className={`sched-heat-head${d.isSame(now, 'day') ? ' is-today' : ''}`}>
@@ -1368,8 +1560,11 @@ function ResourceWeek({ anchor, teachers, events, now, onPick, onCreate }) {
           </div>
           {weekDays.map(d => {
             const dateStr = d.format('YYYY-MM-DD')
-            const items = events.filter(ev => ev.day === dateStr && (ev.teachers || []).some(x => x.USER_ID === t.USER_ID))
-            const total = items.reduce((sum, ev) => sum + Math.max(parseClock(ev.end) - parseClock(ev.start), 0), 0)
+            const items = events.filter(ev => ev.day === dateStr && eventOnTeacher(ev, t.USER_ID))
+            const total = items.reduce((sum, ev) => {
+              if (ev.allDay || !ev.start) return sum + 1
+              return sum + Math.max(parseClock(ev.end) - parseClock(ev.start), 0)
+            }, 0)
             const heavy = items.length >= 3
             const past = d.isBefore(now, 'day')
             return (
@@ -1377,16 +1572,34 @@ function ResourceWeek({ anchor, teachers, events, now, onPick, onCreate }) {
                 key={dateStr}
                 type="button"
                 className={`sched-heat-cell${items.length ? ' has' : ''}${heavy ? ' is-heavy' : ''}${past ? ' is-past' : ''}`}
-                onClick={() => items.length
-                  ? onPick(d, t.USER_ID)
-                  : (!past && onCreate({ day: dateStr, teacherId: t.USER_ID }))}
+                onPointerDown={e => {
+                  startPan(e, () => {
+                    if (items.length) onPick(d, t.USER_ID)
+                    else if (!past) onCreate({ day: dateStr, teacherId: t.USER_ID, anchor: e.currentTarget })
+                  })
+                }}
+                onPointerMove={onPanMove}
+                onPointerUp={endPan}
+                onPointerCancel={endPan}
               >
-                {items.length ? `${items.length}堂 · ${total.toFixed(total % 1 ? 1 : 0)}h` : '—'}
+                {items.length ? `${items.length} 活動 · ${total.toFixed(total % 1 ? 1 : 0)}h` : '—'}
               </button>
             )
           })}
         </div>
       ))}
+      <div
+        className="sched-heat-row is-fill"
+        onPointerDown={e => startPan(e)}
+        onPointerMove={onPanMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+      >
+        <div className="sched-res-name" />
+        {weekDays.map(d => (
+          <div key={d.format('YYYY-MM-DD')} className="sched-heat-cell is-fill" />
+        ))}
+      </div>
     </div>
   )
 }

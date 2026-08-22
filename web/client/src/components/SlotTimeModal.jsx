@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flash } from './NoticeHost'
 
 function SlotTimeModal({ slot, onClose, onSave }) {
   const [day, setDay] = useState(slot.day)
@@ -9,9 +10,9 @@ function SlotTimeModal({ slot, onClose, onSave }) {
   const enrolled = slot.enrolled || 0
 
   const handleSave = async () => {
-    if (!day || !start || !end) { alert('請填寫完整時間'); return }
-    if (end <= start) { alert('結束時間必須晚於開始時間'); return }
-    if (enrolled > 0 && !action) { alert('請選擇學生處理方式：搬遷或退還課時'); return }
+    if (!day || !start || !end) { flash('error', '請填寫完整時間'); return }
+    if (end <= start) { flash('error', '結束時間必須晚於開始時間'); return }
+    if (enrolled > 0 && !action) { flash('error', '請選擇學生處理方式：搬遷或退還課時'); return }
     setSaving(true)
     try {
       await onSave({ day, start, end, studentAction: enrolled > 0 ? action : undefined })
